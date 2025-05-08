@@ -1,29 +1,26 @@
-import express, { Request, Response } from 'express'
+import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
 import connectDB from './config/db'
 
-// Load env vars
+import authRoutes from './routes/authRoutes'
+import adminRoutes from './routes/adminRoutes'
+import voterRoutes from './routes/voterRoutes'
+import officerRoutes from './routes/officerRoutes'
+import feedbackRoutes from './routes/feedbackRoutes'
 dotenv.config()
-
-// Connect to MongoDB
 connectDB()
 
-// App init
 const app = express()
-const PORT = process.env.PORT || 5000
-
-// Middleware
 app.use(cors())
 app.use(express.json())
 
-// Basic route
-app.get('/', (_req: Request, res: Response) => {
-  res.send('✅ API is running...')
-})
+// Routes
+app.use('/api', authRoutes)         // /api/admin/login
+app.use('/api/admin', adminRoutes)  // /api/admin/voters
+app.use('/api/voters', voterRoutes) // /api/voters (POST)
+app.use('/api/officer', officerRoutes)
+app.use('/api/feedback', feedbackRoutes) // /api/officer/voters (GET)
 
-
-// Start server
-app.listen(PORT, () => {
-  console.log(`🚀 Server running at http://localhost:${PORT}`)
-})
+const PORT = process.env.PORT || 5000
+app.listen(PORT, () => console.log(`✅ Server running at http://localhost:${PORT}`))

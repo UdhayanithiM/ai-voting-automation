@@ -2,8 +2,11 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 
+// Global Styles
+import './index.css'
+
 // Voter Screens
-import App from './App'
+import Welcome from '@/pages/Welcome'
 import Login from '@/pages/Login'
 import VerifyOtp from '@/pages/VerifyOtp'
 import VoterDetails from '@/pages/VoterDetails'
@@ -12,19 +15,26 @@ import SelfieCapture from '@/pages/SelfieCapture'
 import Confirmation from '@/pages/Confirmation'
 import VotePage from '@/pages/VotePage'
 import VoteStatus from '@/pages/VoteStatus'
-
+import Feedback from '@/pages/Feedback'
 
 // Admin Screens
 import AdminLogin from '@/pages/admin/AdminLogin'
 import AdminLayout from '@/pages/admin/AdminLayout'
 import AdminDashboard from '@/pages/admin/AdminDashboard'
-
-// Admin Protected Route
+import VoterTable from '@/pages/admin/VoterTable'
+import ResultsLogs from '@/pages/admin/ResultsLogs'
 import ProtectedAdminRoute from '@/pages/admin/ProtectedAdminRoute'
+
+// Officer Screens
+import OfficerLogin from '@/pages/OfficerLogin'
+import OfficerDashboard from '@/pages/officer/OfficerDashboard'
+import BoothVerification from '@/pages/officer/BoothVerification'
+import QueueDisplay from '@/pages/officer/QueueDisplay'
+import ProtectedOfficerRoute from '@/pages/officer/ProtectedOfficerRoute'
+
+// Protected Voter Routes
 import { ProtectedVoteRoute } from '@/routes/ProtectedVoteRoute'
 import { ProtectedVoteStatus } from '@/routes/ProtectedVoteStatus'
-// Global styles
-import './index.css'
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
@@ -32,14 +42,14 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <Routes>
 
         {/* Voter Routes */}
-        <Route path="/" element={<App />} />
+        <Route path="/" element={<Welcome />} />
         <Route path="/login" element={<Login />} />
         <Route path="/verify-otp" element={<VerifyOtp />} />
         <Route path="/voter-details" element={<VoterDetails />} />
         <Route path="/preview-details" element={<PreviewDetails />} />
         <Route path="/selfie-capture" element={<SelfieCapture />} />
         <Route path="/confirmation" element={<Confirmation />} />
-        
+        <Route path="/feedback" element={<Feedback />} />
         <Route 
           path="/vote" 
           element={
@@ -48,13 +58,39 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             </ProtectedVoteRoute>
           } 
         />
-        
         <Route 
           path="/votestatus" 
           element={
             <ProtectedVoteStatus>
               <VoteStatus />
             </ProtectedVoteStatus>
+          } 
+        />
+
+        {/* Officer Routes */}
+        <Route path="/officer/login" element={<OfficerLogin />} />
+        <Route 
+          path="/officer/dashboard" 
+          element={
+            <ProtectedOfficerRoute>
+              <OfficerDashboard />
+            </ProtectedOfficerRoute>
+          } 
+        />
+        <Route 
+          path="/officer/verify" 
+          element={
+            <ProtectedOfficerRoute>
+              <BoothVerification />
+            </ProtectedOfficerRoute>
+          } 
+        />
+        <Route 
+          path="/officer/queue" 
+          element={
+            <ProtectedOfficerRoute>
+              <QueueDisplay />
+            </ProtectedOfficerRoute>
           } 
         />
 
@@ -69,7 +105,22 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
               </ProtectedAdminRoute>
             }
           />
-          {/* You can add more nested admin routes here */}
+          <Route
+            path="dashboard/voters"
+            element={
+              <ProtectedAdminRoute>
+                <VoterTable />
+              </ProtectedAdminRoute>
+            }
+          />
+          <Route
+            path="dashboard/results"
+            element={
+              <ProtectedAdminRoute>
+                <ResultsLogs />
+              </ProtectedAdminRoute>
+            }
+          />
         </Route>
 
       </Routes>
