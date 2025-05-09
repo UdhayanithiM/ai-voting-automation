@@ -28,9 +28,10 @@ import ProtectedAdminRoute from '@/pages/admin/ProtectedAdminRoute'
 // Officer Screens
 import OfficerLogin from '@/pages/OfficerLogin'
 import OfficerDashboard from '@/pages/officer/OfficerDashboard'
-import BoothVerification from '@/pages/officer/BoothVerification'
 import QueueManagement from '@/pages/officer/QueueManagement'
 import ProtectedOfficerRoute from '@/pages/officer/ProtectedOfficerRoute'
+import VerifyVoter from '@/pages/officer/VerifyVoter'
+import OfficerReports from '@/pages/officer/OfficerReports'
 
 // Protected Voter Routes
 import { ProtectedVoteRoute } from '@/routes/ProtectedVoteRoute'
@@ -40,7 +41,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>
       <Routes>
-
         {/* Voter Routes */}
         <Route path="/" element={<Welcome />} />
         <Route path="/login" element={<Login />} />
@@ -81,7 +81,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           path="/officer/verify" 
           element={
             <ProtectedOfficerRoute>
-              <BoothVerification />
+              <VerifyVoter />
             </ProtectedOfficerRoute>
           } 
         />
@@ -92,6 +92,14 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
               <QueueManagement />
             </ProtectedOfficerRoute>
           } 
+        />
+        <Route 
+          path="/officer/reports"
+          element={
+            <ProtectedOfficerRoute>
+              <OfficerReports />
+            </ProtectedOfficerRoute>
+          }
         />
 
         {/* Admin Routes */}
@@ -122,7 +130,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             }
           />
         </Route>
-
       </Routes>
     </BrowserRouter>
   </React.StrictMode>

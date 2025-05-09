@@ -1,7 +1,9 @@
 import { useEffect, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
 import { io } from 'socket.io-client'
 import useSWR from 'swr'
 import { Button } from '@/components/ui/Button'
+import { useQueueStore } from '@/store/useQueueStore'
 import API from '@/lib/axios'
 
 interface QueueToken {
@@ -14,6 +16,9 @@ interface QueueToken {
 const fetcher = (url: string) => API.get(url).then((res) => res.data)
 
 export default function QueueManagement() {
+  const navigate = useNavigate()
+  const { setSelectedToken } = useQueueStore()
+
   const { data: waitingTokens = [], mutate: refreshWaiting } = useSWR<QueueToken[]>(
     '/queue?status=waiting',
     fetcher,
@@ -56,17 +61,17 @@ export default function QueueManagement() {
     }
   }
 
-  // Connect to the socket and listen for queue updates
+  const handleVerifyClick = (token: QueueToken) => {
+    setSelectedToken(token)
+    navigate('/officer/verify')
+  }
+
   useEffect(() => {
     const socket = io(import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000')
-
-    // Listen for 'queue:update' event and refresh data when emitted
     socket.on('queue:update', () => {
       refreshWaiting()
       refreshCompleted()
     })
-
-    // Clean up the socket connection on unmount
     return () => {
       socket.disconnect()
     }
@@ -100,12 +105,20 @@ export default function QueueManagement() {
                     Token #{token.tokenNumber} — {token.voterName}
                   </p>
                 </div>
-                <Button
-                  onClick={() => handleComplete(token._id)}
-                  disabled={loadingId === token._id}
-                >
-                  {loadingId === token._id ? 'Completing...' : 'Mark as Done'}
-                </Button>
+                <div className="flex gap-2">
+                  <Button
+                    onClick={() => handleVerifyClick(token)}
+                    className="bg-blue-600 hover:bg-blue-700"
+                  >
+                    Verify
+                  </Button>
+                  <Button
+                    onClick={() => handleComplete(token._id)}
+                    disabled={loadingId === token._id}
+                  >
+                    {loadingId === token._id ? 'Completing...' : 'Mark as Done'}
+                  </Button>
+                </div>
               </div>
             ))}
           </div>
