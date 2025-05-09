@@ -29,7 +29,7 @@ import ProtectedAdminRoute from '@/pages/admin/ProtectedAdminRoute'
 import OfficerLogin from '@/pages/OfficerLogin'
 import OfficerDashboard from '@/pages/officer/OfficerDashboard'
 import BoothVerification from '@/pages/officer/BoothVerification'
-import QueueDisplay from '@/pages/officer/QueueDisplay'
+import QueueManagement from '@/pages/officer/QueueManagement'
 import ProtectedOfficerRoute from '@/pages/officer/ProtectedOfficerRoute'
 
 // Protected Voter Routes
@@ -89,7 +89,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           path="/officer/queue" 
           element={
             <ProtectedOfficerRoute>
-              <QueueDisplay />
+              <QueueManagement />
             </ProtectedOfficerRoute>
           } 
         />
