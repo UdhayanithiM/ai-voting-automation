@@ -1,6 +1,8 @@
 import useSWR from 'swr'
 import { Button } from '@/components/ui/Button'
 import API from '@/lib/axios'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 
 interface QueueToken {
   _id: string
@@ -10,7 +12,8 @@ interface QueueToken {
   updatedAt: string
 }
 
-const fetcher = (url: string) => API.get(url).then((res) => res.data)
+const fetcher = (url: string) =>
+  API.get(url).then((res) => Array.isArray(res.data) ? res.data : [])
 
 const exportToCSV = (tokens: QueueToken[]) => {
   const headers = ['Token Number', 'Voter Name', 'Completed At']
@@ -30,6 +33,30 @@ const exportToCSV = (tokens: QueueToken[]) => {
   document.body.appendChild(link)
   link.click()
   link.remove()
+}
+
+const exportToPDF = (tokens: QueueToken[]) => {
+  const doc = new jsPDF()
+  const date = new Date().toLocaleString()
+
+  doc.setFontSize(18)
+  doc.text('Voting Report', 14, 20)
+  doc.setFontSize(11)
+  doc.text(`Exported: ${date}`, 14, 28)
+
+  const rows = tokens.map(token => [
+    token.tokenNumber,
+    token.voterName,
+    new Date(token.updatedAt).toLocaleString(),
+  ])
+
+  autoTable(doc, {
+    startY: 35,
+    head: [['Token Number', 'Voter Name', 'Completed At']],
+    body: rows,
+  })
+
+  doc.save('voting_report.pdf')
 }
 
 export default function OfficerReports() {
@@ -66,11 +93,10 @@ export default function OfficerReports() {
         </div>
       )}
 
-      {/* ✅ Export to CSV Button */}
-      <div className="mt-8">
-        <Button className="w-full" onClick={() => exportToCSV(completed)}>
-          📥 Export to CSV
-        </Button>
+      {/* ✅ Export Buttons */}
+      <div className="mt-8 grid grid-cols-1 sm:grid-cols-2 gap-4">
+        <Button onClick={() => exportToCSV(completed)}>📥 Export to CSV</Button>
+        <Button onClick={() => exportToPDF(completed)}>🖨 Export to PDF</Button>
       </div>
     </div>
   )

@@ -1,9 +1,12 @@
 import express from 'express'
-import { loginAdmin } from '../controllers/authController'
+import { loginAdmin, loginOfficer } from '../controllers/authController'
 
 const router = express.Router()
 
+// Admin login route
 router.post('/admin/login', loginAdmin)
-router.post('/officer/login', loginAdmin) // For officer login, you can create a separate controller if needed
+
+// Officer login route
+router.post('/officer/login', loginOfficer)
 
 export default router

@@ -11,15 +11,14 @@ interface QueueToken {
   status: 'waiting' | 'completed'
 }
 
-// ✅ Use API instance instead of axios
 const fetcher = (url: string) => API.get(url).then((res) => res.data)
 
 export default function OfficerDashboard() {
-  const { data: tokens, mutate, isLoading } = useSWR<QueueToken[]>(
-    '/queue?status=waiting',
-    fetcher,
-    { refreshInterval: 5000 }
-  )
+  const { data, mutate, isLoading } = useSWR('/queue?status=waiting', fetcher, {
+    refreshInterval: 5000,
+  })
+
+  const tokens: QueueToken[] = Array.isArray(data) ? data : []
 
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const navigate = useNavigate()
@@ -55,7 +54,7 @@ export default function OfficerDashboard() {
           What would you like to do?
         </h2>
 
-        {/* Actions Grid */}
+        {/* Actions */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           <div className="bg-white p-6 rounded-lg shadow-md text-center">
             <h3 className="text-lg font-semibold text-gray-700">Voter Verification</h3>
@@ -82,17 +81,17 @@ export default function OfficerDashboard() {
           </div>
         </div>
 
-        {/* Live Queue Section */}
+        {/* Live Queue */}
         <div className="mt-10">
           <h2 className="text-xl font-semibold text-gray-800 mb-4">Live Queue</h2>
 
           {isLoading ? (
             <p className="text-gray-500">Loading queue...</p>
-          ) : tokens?.length === 0 ? (
+          ) : tokens.length === 0 ? (
             <p className="text-gray-500">No waiting voters.</p>
           ) : (
             <div className="space-y-4">
-              {tokens?.map((token) => (
+              {tokens.map((token) => (
                 <div
                   key={token._id}
                   className="border p-4 rounded-xl flex justify-between items-center"

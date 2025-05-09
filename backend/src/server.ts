@@ -13,6 +13,7 @@ import officerRoutes from './routes/officerRoutes'
 import feedbackRoutes from './routes/feedbackRoutes'
 import queueRoutes from './routes/queueRoutes'
 
+
 // Load environment variables
 dotenv.config()
 
@@ -44,7 +45,7 @@ io.on('connection', (socket) => {
 })
 
 // Routes
-app.use('/api', authRoutes)
+app.use('/api/auth', authRoutes)
 app.use('/api/admin', adminRoutes)
 app.use('/api/voters', voterRoutes)
 app.use('/api/officer', officerRoutes)

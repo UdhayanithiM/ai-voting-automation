@@ -15,17 +15,17 @@ interface QueueToken {
 
 const fetcher = (url: string) => API.get(url).then((res) => res.data)
 
+const isArray = (data: any): data is QueueToken[] => Array.isArray(data)
+
 export default function QueueManagement() {
   const navigate = useNavigate()
   const { setSelectedToken } = useQueueStore()
 
-  const { data: waitingTokens = [], mutate: refreshWaiting } = useSWR<QueueToken[]>(
-    '/queue?status=waiting',
-    fetcher,
-    { refreshInterval: 5000 }
-  )
+  const { data: waitingTokens, mutate: refreshWaiting } = useSWR('/queue?status=waiting', fetcher, {
+    refreshInterval: 5000,
+  })
 
-  const { data: completedTokens = [], mutate: refreshCompleted } = useSWR<QueueToken[]>(
+  const { data: completedTokens, mutate: refreshCompleted } = useSWR(
     '/queue?status=completed',
     fetcher
   )
@@ -81,17 +81,18 @@ export default function QueueManagement() {
     <div className="min-h-screen p-6 bg-white">
       <h1 className="text-2xl font-bold mb-6 text-gray-800">Queue Management</h1>
 
-      {/* 🔴 Clear All Queue Button */}
       <div className="flex justify-end mb-4">
         <Button onClick={handleClearQueue} className="bg-red-600 hover:bg-red-700">
           Clear All Queue
         </Button>
       </div>
 
-      {/* Waiting Voters */}
+      {/* Waiting Tokens */}
       <section className="mb-10">
         <h2 className="text-lg font-semibold text-gray-700 mb-4">⏳ Waiting Voters</h2>
-        {waitingTokens.length === 0 ? (
+        {!isArray(waitingTokens) ? (
+          <p className="text-gray-500">Loading queue or failed to load.</p>
+        ) : waitingTokens.length === 0 ? (
           <p className="text-gray-500">No voters in queue.</p>
         ) : (
           <div className="space-y-4">
@@ -125,10 +126,12 @@ export default function QueueManagement() {
         )}
       </section>
 
-      {/* Completed Voters */}
+      {/* Completed Tokens */}
       <section>
         <h2 className="text-lg font-semibold text-gray-700 mb-4">✅ Completed Voters</h2>
-        {completedTokens.length === 0 ? (
+        {!isArray(completedTokens) ? (
+          <p className="text-gray-500">Loading completed tokens...</p>
+        ) : completedTokens.length === 0 ? (
           <p className="text-gray-500">No completed tokens yet.</p>
         ) : (
           <div className="space-y-2 text-sm text-gray-600">

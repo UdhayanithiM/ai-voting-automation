@@ -33,7 +33,7 @@ import ProtectedOfficerRoute from '@/pages/officer/ProtectedOfficerRoute'
 import VerifyVoter from '@/pages/officer/VerifyVoter'
 import OfficerReports from '@/pages/officer/OfficerReports'
 
-// Protected Voter Routes
+// Protected Routes (Voter)
 import { ProtectedVoteRoute } from '@/routes/ProtectedVoteRoute'
 import { ProtectedVoteStatus } from '@/routes/ProtectedVoteStatus'
 
@@ -50,50 +50,50 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Route path="/selfie-capture" element={<SelfieCapture />} />
         <Route path="/confirmation" element={<Confirmation />} />
         <Route path="/feedback" element={<Feedback />} />
-        <Route 
-          path="/vote" 
+        <Route
+          path="/vote"
           element={
             <ProtectedVoteRoute>
               <VotePage />
             </ProtectedVoteRoute>
-          } 
+          }
         />
-        <Route 
-          path="/votestatus" 
+        <Route
+          path="/votestatus"
           element={
             <ProtectedVoteStatus>
               <VoteStatus />
             </ProtectedVoteStatus>
-          } 
+          }
         />
 
         {/* Officer Routes */}
         <Route path="/officer/login" element={<OfficerLogin />} />
-        <Route 
-          path="/officer/dashboard" 
+        <Route
+          path="/officer/dashboard"
           element={
             <ProtectedOfficerRoute>
               <OfficerDashboard />
             </ProtectedOfficerRoute>
-          } 
+          }
         />
-        <Route 
-          path="/officer/verify" 
+        <Route
+          path="/officer/verify"
           element={
             <ProtectedOfficerRoute>
               <VerifyVoter />
             </ProtectedOfficerRoute>
-          } 
+          }
         />
-        <Route 
-          path="/officer/queue" 
+        <Route
+          path="/officer/queue"
           element={
             <ProtectedOfficerRoute>
               <QueueManagement />
             </ProtectedOfficerRoute>
-          } 
+          }
         />
-        <Route 
+        <Route
           path="/officer/reports"
           element={
             <ProtectedOfficerRoute>
