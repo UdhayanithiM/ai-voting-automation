@@ -1,13 +1,16 @@
-import React from 'react'
+import React, { type JSX } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useAdminAuth } from '@/store/useAdminAuth'
 
+
 interface ProtectedAdminRouteProps {
-  children: React.ReactElement
+  children: JSX.Element
 }
 
-export default function ProtectedAdminRoute({ children }: ProtectedAdminRouteProps) {
-  const isAuthenticated = useAdminAuth((state) => state.isAuthenticated)
+const ProtectedAdminRoute: React.FC<ProtectedAdminRouteProps> = ({ children }) => {
+  const token = useAdminAuth((state) => state.token)
 
-  return isAuthenticated ? children : <Navigate to="/admin/login" replace />
+  return token ? children : <Navigate to="/admin/login" replace />
 }
+
+export default ProtectedAdminRoute

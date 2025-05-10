@@ -23,6 +23,7 @@ import AdminLayout from '@/pages/admin/AdminLayout'
 import AdminDashboard from '@/pages/admin/AdminDashboard'
 import VoterTable from '@/pages/admin/VoterTable'
 import ResultsLogs from '@/pages/admin/ResultsLogs'
+import RegisterOfficer from '@/pages/admin/RegisterOfficer'
 import ProtectedAdminRoute from '@/pages/admin/ProtectedAdminRoute'
 
 // Officer Screens
@@ -126,6 +127,14 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             element={
               <ProtectedAdminRoute>
                 <ResultsLogs />
+              </ProtectedAdminRoute>
+            }
+          />
+          <Route
+            path="register-officer"
+            element={
+              <ProtectedAdminRoute>
+                <RegisterOfficer />
               </ProtectedAdminRoute>
             }
           />

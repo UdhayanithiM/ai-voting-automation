@@ -14,14 +14,24 @@ export default function OfficerLogin() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
     try {
-      const res = await API.post('/auth/officer/login', { email, password })
-      const token = res.data.token
+      const response = await API.post('/auth/officer/login', {
+        email,
+        password,
+      })
+
+      const { token, officer } = response.data
+
+      // Save token locally
       localStorage.setItem('officerToken', token)
-      login()
+
+      // Call Zustand login function with data
+      login(token, officer)
+
+      // Redirect to officer dashboard
       navigate('/officer/dashboard')
     } catch (error) {
       console.error('Login error:', error)
-      alert('Invalid credentials')
+      alert('Invalid credentials or server error')
     }
   }
 
@@ -30,9 +40,23 @@ export default function OfficerLogin() {
       <div className="w-full max-w-md space-y-6">
         <h1 className="text-3xl font-bold text-center text-gray-800">Officer Login</h1>
         <form className="space-y-4" onSubmit={handleLogin}>
-          <Input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} />
-          <Input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} />
-          <Button type="submit" className="w-full">Log In</Button>
+          <Input
+            type="email"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+          />
+          <Input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            required
+          />
+          <Button type="submit" className="w-full">
+            Log In
+          </Button>
         </form>
       </div>
     </div>

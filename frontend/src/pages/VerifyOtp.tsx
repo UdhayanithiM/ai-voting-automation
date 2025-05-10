@@ -1,28 +1,43 @@
-// src/pages/VerifyOtp.tsx
-import { Input } from '@/components/ui/Input'
-import { Button } from '@/components/ui/Button'
 import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import API from '@/lib/axios'
+import { useVoterAuth } from '@/store/useVoterAuth'
+import { Input } from '@/components/ui/Input'
+import { Button } from '@/components/ui/Button'
 
 export default function VerifyOtp() {
   const [otp, setOtp] = useState('')
+  const phone = localStorage.getItem('otpPhone') || ''
   const navigate = useNavigate()
+  const { login } = useVoterAuth()
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.replace(/\D/g, '').slice(0, 6)
     setOtp(value)
 
+    // Optionally navigate when OTP is complete
     if (value.length === 6) {
       setTimeout(() => {
-        navigate('/voter-details') // or your next route
+        handleVerify()
       }, 500)
     }
   }
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (otp.length === 6) {
+      handleVerify()
+    }
+  }
+
+  const handleVerify = async () => {
+    try {
+      const res = await API.post('/auth/voter/verify-otp', { phone, otp })
+      login(res.data.token, res.data.voter)
       navigate('/voter-details')
+    } catch (err) {
+      console.error(err)
+      alert('Invalid OTP')
     }
   }
 

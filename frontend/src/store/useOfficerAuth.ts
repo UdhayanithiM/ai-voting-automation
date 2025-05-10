@@ -1,13 +1,18 @@
 import { create } from 'zustand'
 
-interface OfficerAuthStore {
+interface OfficerState {
   isAuthenticated: boolean
-  login: () => void
+  token: string | null
+  officer: { id: string; email: string } | null
+  login: (token: string, officer: any) => void
   logout: () => void
 }
 
-export const useOfficerAuth = create<OfficerAuthStore>((set) => ({
+export const useOfficerAuth = create<OfficerState>((set) => ({
   isAuthenticated: false,
-  login: () => set({ isAuthenticated: true }),
-  logout: () => set({ isAuthenticated: false }),
+  token: null,
+  officer: null,
+  login: (token, officer) =>
+    set({ isAuthenticated: true, token, officer }),
+  logout: () => set({ isAuthenticated: false, token: null, officer: null }),
 }))

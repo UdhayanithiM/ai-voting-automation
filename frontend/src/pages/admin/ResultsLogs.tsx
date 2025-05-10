@@ -1,83 +1,102 @@
-import { useEffect } from 'react'
+import useSWR from 'swr'
+import API from '@/lib/axios'
 import { Button } from '@/components/ui/Button'
+import jsPDF from 'jspdf'
+import autoTable from 'jspdf-autotable'
 
-const dummyResults = {
-  totalVotes: 124,
-  totalFlagged: 3,
-  totalVerified: 121,
-  logs: [
-    {
-      voterId: 'AB123456',
-      name: 'Ravi Kumar',
-      status: 'Voted',
-      time: '10:12 AM',
-    },
-    {
-      voterId: 'CD789012',
-      name: 'Sita Devi',
-      status: 'Flagged',
-      time: '10:20 AM',
-    },
-    {
-      voterId: 'EF345678',
-      name: 'Mohammed Ali',
-      status: 'Voted',
-      time: '10:30 AM',
-    },
-  ],
+interface Vote {
+  _id: string
+  voterId: string
+  candidate: string
+  createdAt: string
 }
 
+const fetcher = (url: string) => API.get(url).then((res) => res.data)
+
 export default function ResultsLogs() {
-  useEffect(() => {
-    // In real app: fetch logs from backend API
-  }, [])
+  const { data: votes = [], isLoading } = useSWR<Vote[]>('/admin/votes', fetcher)
+
+  const exportToCSV = () => {
+    const headers = ['#', 'Voter ID', 'Candidate', 'Time']
+    const rows = votes.map((v, i) => [
+      i + 1,
+      v.voterId,
+      v.candidate,
+      new Date(v.createdAt).toLocaleString(),
+    ])
+
+    const csv = [headers, ...rows].map((r) => r.join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = 'voting-results.csv'
+    link.click()
+    URL.revokeObjectURL(url)
+  }
+
+  const exportToPDF = () => {
+    const doc = new jsPDF()
+    doc.setFontSize(18)
+    doc.text('Voting Results Report', 14, 20)
+    doc.setFontSize(11)
+    doc.text(`Generated on: ${new Date().toLocaleString()}`, 14, 28)
+
+    const rows = votes.map((v, i) => [
+      i + 1,
+      v.voterId,
+      v.candidate,
+      new Date(v.createdAt).toLocaleString(),
+    ])
+
+    autoTable(doc, {
+      startY: 35,
+      head: [['#', 'Voter ID', 'Candidate', 'Time']],
+      body: rows,
+    })
+
+    doc.save('voting-results.pdf')
+  }
 
   return (
-    <div className="min-h-screen bg-white px-6 py-10 space-y-8">
-      <h1 className="text-3xl font-bold text-gray-800">Results & Logs</h1>
+    <div className="min-h-screen bg-white p-6">
+      <h1 className="text-3xl font-bold text-gray-800 mb-6">📊 Voting Logs</h1>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-center">
-        <div className="p-6 bg-blue-100 rounded-xl">
-          <p className="text-sm text-gray-600">Total Votes</p>
-          <p className="text-2xl font-bold text-blue-700">{dummyResults.totalVotes}</p>
-        </div>
-        <div className="p-6 bg-green-100 rounded-xl">
-          <p className="text-sm text-gray-600">Verified Voters</p>
-          <p className="text-2xl font-bold text-green-700">{dummyResults.totalVerified}</p>
-        </div>
-        <div className="p-6 bg-red-100 rounded-xl">
-          <p className="text-sm text-gray-600">Flagged</p>
-          <p className="text-2xl font-bold text-red-700">{dummyResults.totalFlagged}</p>
-        </div>
-      </div>
-
-      <div>
-        <h2 className="text-xl font-semibold text-gray-700 mt-8 mb-4">Voter Logs</h2>
-        <div className="overflow-x-auto">
-          <table className="min-w-full border divide-y divide-gray-200">
-            <thead className="bg-gray-50 text-left text-sm text-gray-600">
-              <tr>
-                <th className="px-4 py-2">Voter ID</th>
-                <th className="px-4 py-2">Name</th>
-                <th className="px-4 py-2">Status</th>
-                <th className="px-4 py-2">Time</th>
-              </tr>
-            </thead>
-            <tbody className="bg-white text-sm divide-y divide-gray-100">
-              {dummyResults.logs.map((log, index) => (
-                <tr key={index}>
-                  <td className="px-4 py-2">{log.voterId}</td>
-                  <td className="px-4 py-2">{log.name}</td>
-                  <td className="px-4 py-2">{log.status}</td>
-                  <td className="px-4 py-2">{log.time}</td>
+      {isLoading ? (
+        <p className="text-gray-500">Loading vote data...</p>
+      ) : votes.length === 0 ? (
+        <p className="text-gray-500">No vote records available.</p>
+      ) : (
+        <>
+          <div className="overflow-x-auto rounded-lg border mb-6">
+            <table className="min-w-full text-sm text-left">
+              <thead className="bg-gray-100 text-xs uppercase text-gray-600">
+                <tr>
+                  <th className="px-4 py-3">#</th>
+                  <th className="px-4 py-3">Voter ID</th>
+                  <th className="px-4 py-3">Candidate</th>
+                  <th className="px-4 py-3">Time</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+              </thead>
+              <tbody className="divide-y">
+                {votes.map((vote, i) => (
+                  <tr key={vote._id} className="hover:bg-gray-50">
+                    <td className="px-4 py-2">{i + 1}</td>
+                    <td className="px-4 py-2">{vote.voterId}</td>
+                    <td className="px-4 py-2">{vote.candidate}</td>
+                    <td className="px-4 py-2">{new Date(vote.createdAt).toLocaleString()}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
-      <Button onClick={() => window.print()}>Print Report</Button>
+          <div className="flex gap-4">
+            <Button onClick={exportToCSV}>📥 Export CSV</Button>
+            <Button onClick={exportToPDF}>🖨 Export PDF</Button>
+          </div>
+        </>
+      )}
     </div>
   )
 }

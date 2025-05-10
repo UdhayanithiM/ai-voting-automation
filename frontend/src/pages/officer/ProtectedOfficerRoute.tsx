@@ -1,15 +1,15 @@
-// src/pages/officer/ProtectedOfficerRoute.tsx
-
+import React, { type JSX } from 'react'
 import { Navigate } from 'react-router-dom'
 import { useOfficerAuth } from '@/store/useOfficerAuth'
-import type { JSX } from 'react'
 
-type ProtectedRouteProps = {
+interface ProtectedOfficerRouteProps {
   children: JSX.Element
 }
 
-export default function ProtectedOfficerRoute({ children }: ProtectedRouteProps) {
-  const { isAuthenticated } = useOfficerAuth()
+const ProtectedOfficerRoute: React.FC<ProtectedOfficerRouteProps> = ({ children }) => {
+  const token = useOfficerAuth((state) => state.token)
 
-  return isAuthenticated ? children : <Navigate to="/officer/login" replace />
+  return token ? children : <Navigate to="/officer/login" replace />
 }
+
+export default ProtectedOfficerRoute

@@ -1,12 +1,16 @@
 import express from 'express'
-import { loginAdmin, loginOfficer } from '../controllers/authController'
+import {
+  loginAdmin,
+  loginOfficer,
+  sendOtp,
+  verifyOtpCode
+} from '../controllers/authController'
 
 const router = express.Router()
 
-// Admin login route
 router.post('/admin/login', loginAdmin)
-
-// Officer login route
 router.post('/officer/login', loginOfficer)
+router.post('/voter/send-otp', sendOtp)
+router.post('/voter/verify-otp', verifyOtpCode)
 
 export default router
