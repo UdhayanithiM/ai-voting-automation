@@ -1,18 +1,17 @@
 {
   "name": "backend",
   "version": "1.0.0",
-  "description": "",
+  "description": "AI Voting Automation Backend",
   "main": "index.js",
+  "type": "commonjs",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "start": "node dist/server.js",
     "build": "tsc",
-    "start": "node dist/server.js"
+    "create:officer": "ts-node src/utils/createOfficer.ts",
+    "create:admin": "ts-node src/utils/createAdmin.ts"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
-  "type": "commonjs",
   "dependencies": {
     "bcrypt": "^5.1.1",
     "bcryptjs": "^3.0.2",
@@ -24,11 +23,10 @@
     "mongodb": "^6.16.0",
     "mongoose": "^8.14.2",
     "socket.io": "^4.8.1",
-    "swr": "^2.3.3",
     "twilio": "^5.6.0"
   },
   "devDependencies": {
-    "@types/bcryptjs": "^2.4.6",
+    "@types/bcrypt": "^5.0.0",
     "@types/cors": "^2.8.18",
     "@types/express": "^5.0.1",
     "@types/jsonwebtoken": "^9.0.9",

@@ -1,18 +1,63 @@
-import { create } from 'zustand'
+// frontend/src/store/useOfficerAuth.ts
+import { create } from 'zustand';
+import { persist, createJSONStorage } from 'zustand/middleware';
 
-interface OfficerState {
-  isAuthenticated: boolean
-  token: string | null
-  officer: { id: string; email: string } | null
-  login: (token: string, officer: any) => void
-  logout: () => void
+// Define the structure of officer data returned from backend
+interface OfficerData {
+  id: string;
+  email: string;
+  name?: string;
+  role?: string;
 }
 
-export const useOfficerAuth = create<OfficerState>((set) => ({
-  isAuthenticated: false,
-  token: null,
-  officer: null,
-  login: (token, officer) =>
-    set({ isAuthenticated: true, token, officer }),
-  logout: () => set({ isAuthenticated: false, token: null, officer: null }),
-}))
+interface OfficerAuthState {
+  isAuthenticated: boolean;
+  token: string | null;
+  officer: OfficerData | null;
+  login: (token: string, officerData: OfficerData) => void;
+  logout: () => void;
+}
+
+export const useOfficerAuth = create<OfficerAuthState>()(
+  persist(
+    (set) => ({
+      isAuthenticated: false,
+      token: null,
+      officer: null,
+      login: (token, officerData) => {
+        set({
+          isAuthenticated: true,
+          token,
+          officer: officerData,
+        });
+      },
+      logout: () => {
+        set({
+          isAuthenticated: false,
+          token: null,
+          officer: null,
+        });
+      },
+    }),
+    {
+      name: 'officer-auth-storage',
+      storage: createJSONStorage(() => localStorage),
+
+      // Update `isAuthenticated` after rehydration if token exists
+      onRehydrateStorage: (persistedState) => {
+        if (persistedState?.token) {
+          return (rehydratedState, error): void => {
+            if (error) {
+              console.error('Error rehydrating officer auth state:', error);
+              return;
+            }
+            if (rehydratedState) {
+              rehydratedState.isAuthenticated = !!rehydratedState.token;
+            }
+          };
+        }
+        return undefined;
+      },
+    }
+  )
+);
