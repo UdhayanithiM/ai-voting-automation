@@ -13,6 +13,8 @@ import officerRoutes from './routes/officerRoutes'
 import feedbackRoutes from './routes/feedbackRoutes'
 import queueRoutes from './routes/queueRoutes'
 import testRoutes from './routes/testRoutes';
+import verificationRoutes from './routes/verificationRoutes';
+import candidateRoutes from './routes/candidateRoutes';
 
 
 // Load environment variables
@@ -53,7 +55,8 @@ app.use('/api/officer', officerRoutes)
 app.use('/api/feedback', feedbackRoutes)
 app.use('/api/queue', queueRoutes)
 app.use('/api/test', testRoutes); 
-
+app.use('/api/verification', verificationRoutes);
+app.use('/api/candidates', candidateRoutes);
 // Server start
 const PORT = process.env.PORT || 5000
 server.listen(PORT, () =>

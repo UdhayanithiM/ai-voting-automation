@@ -1,24 +1,27 @@
-import express from 'express'
+// backend/src/routes/queueRoutes.ts
+import express from 'express';
 import {
   addToken,
   getTokens,
   completeToken,
   clearQueue,
-} from '../controllers/queueController'
-import { protect } from '../middleware/authMiddleware'
+  requestVotingSlotStub
+} from '../controllers/queueController';
+import { protect, protectVoterStepSession } from '../middleware/authMiddleware';
 
-const router = express.Router()
+const router = express.Router();
 
-// ✅ Add new token to queue
-router.post('/', addToken)
+const QUEUE_VOTE_PURPOSE = 'voter-queue-and-vote-session';
 
-// ✅ Get tokens by status (waiting/completed)
-router.get('/', getTokens)
+router.post(
+    '/request-slot', 
+    protectVoterStepSession(QUEUE_VOTE_PURPOSE), 
+    requestVotingSlotStub 
+);
 
-// ✅ Mark a token as completed
-router.patch('/:id/complete', completeToken)
+router.post('/', protect, addToken); 
+router.get('/', protect, getTokens);  
+router.patch('/:id/complete', protect, completeToken); // This should now align due to generic AuthRequest
+router.delete('/reset', protect, clearQueue); 
 
-// ✅ 🧹 Clear entire queue (requires auth)
-router.delete('/reset',  clearQueue)
-
-export default router
+export default router;

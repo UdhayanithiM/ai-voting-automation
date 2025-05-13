@@ -1,180 +1,200 @@
-// server/controllers/authController.ts
+// backend/src/controllers/authController.ts
 import { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import { Officer, OfficerDocument } from '../models/Officer'; // Path to your Officer model
-import { Admin, AdminDocument } from '../models/Admin'; // Path to your Admin model
-import { Voter } from '../models/Voter'; // Path to your Voter model
-import { generateToken } from '../utils/tokenUtils'; // Path to your token utility
-import { sendOtpToPhone, verifyOtp } from '../utils/otpUtils'; // Path to your OTP utility
+import jwt from 'jsonwebtoken';
+import { Admin, AdminDocument } from '../models/Admin'; // Assuming AdminDocument defines _id
+import { Officer, OfficerDocument } from '../models/Officer'; // Assuming OfficerDocument defines _id and name
+import { Voter, VoterDocument } from '../models/Voter'; // Ensure VoterDocument defines _id, fullName, photoUrl
+import { generateToken } from '../utils/tokenUtils';
+import { sendOtpToPhone, verifyOtp, clearOtp } from '../utils/otpUtils';
 
-// 🧑‍💼 Admin Login (assuming this is correct as per your notes)
+// --- Helper for consistent error logging and response ---
+const handleAuthError = (res: Response, error: unknown, context: string, statusCode: number = 500) => {
+    const err = error as Error;
+    console.error(`[AuthC] Error in ${context}:`, err.message);
+    // This function sends the response, so the caller doesn't need to return its result
+    res.status(statusCode).json({ message: `Failed during ${context}`, error: err.message });
+};
+
+// --- Admin Login ---
 export const loginAdmin = async (req: Request, res: Response): Promise<void> => {
-  const { email, password } = req.body;
-  console.log(`[Auth] Admin login attempt for email: ${email}`);
-
-  try {
-    const admin = (await Admin.findOne({ email })) as AdminDocument | null;
-
-    if (!admin) {
-      console.log(`[Auth] Admin login failed: No admin found with email ${email}.`);
-      res.status(401).json({ message: 'Invalid credentials - admin not found' });
-      return;
+    const { email, password } = req.body;
+    const context = "admin login";
+    console.log(`[AuthC] ${context} attempt for email: ${email}`);
+    try {
+        if (!email || !password) {
+            res.status(400).json({ message: 'Email and password are required' });
+            return; // Early exit
+        }
+        // Explicitly type the result of findOne
+        const admin: AdminDocument | null = await Admin.findOne({ email }); 
+        if (!admin || !admin.password) {
+            res.status(401).json({ message: 'Invalid email or password' });
+            return; // Early exit
+        }
+        
+        const isMatch = await bcrypt.compare(password, admin.password); // Assuming Admin model has pre-save hook or password was pre-hashed
+        if (!isMatch) {
+            console.log(`[AuthC] Password mismatch for admin ${email}.`);
+            res.status(401).json({ message: 'Invalid email or password' });
+            return; // Early exit
+        }
+        // admin._id should now be correctly typed
+        const token = generateToken(admin._id.toString()); 
+        console.log(`[AuthC] ${context} successful for ${email}.`);
+        res.status(200).json({ // Final response, no 'return' needed before this
+            token,
+            user: { id: admin._id.toString(), email: admin.email, role: 'admin' },
+        });
+    } catch (error) {
+        handleAuthError(res, error, context); // handleAuthError sends the response
     }
-
-    if (!admin.password) {
-        console.log(`[Auth] Admin login failed: Admin ${email} has no password set.`);
-        res.status(500).json({ message: 'Server configuration error - admin account incomplete.' });
-        return;
-    }
-
-    const isMatch = await bcrypt.compare(password, admin.password);
-    console.log(`[Auth] Password match for admin ${email}: ${isMatch}`);
-
-    if (!isMatch) {
-      console.log(`[Auth] Admin login failed: Password mismatch for email ${email}.`);
-      res.status(401).json({ message: 'Invalid credentials - password mismatch' });
-      return;
-    }
-
-    const token = generateToken(admin._id.toString());
-    console.log(`[Auth] Admin login successful for ${email}. Token generated.`);
-
-    res.status(200).json({
-      token,
-      user: { // Consistent 'user' key
-        id: admin._id.toString(),
-        email: admin.email,
-        role: 'admin',
-      },
-    });
-  } catch (err) {
-    console.error('[Auth] Admin login error:', err);
-    res.status(500).json({ message: 'Server error during admin login' });
-  }
 };
 
-// 👮 Officer Login (Corrected and with Logging)
+// --- Officer Login ---
 export const loginOfficer = async (req: Request, res: Response): Promise<void> => {
-  const { email, password } = req.body;
-  console.log(`[Auth] Officer login attempt for email: ${email}`);
+    const { email, password } = req.body;
+    const context = "officer login";
+    console.log(`[AuthC] ${context} attempt for email: ${email}`);
+    try {
+        if (!email || !password) {
+            res.status(400).json({ message: 'Email and password are required' });
+            return;
+        }
+        // Explicitly type the result of findOne
+        const officer: OfficerDocument | null = await Officer.findOne({ email }); 
+        if (!officer || !officer.password) {
+            res.status(401).json({ message: 'Invalid email or password' });
+            return;
+        }
+        const isMatch = await officer.comparePassword(password); // Uses method from Officer model
+        if (!isMatch) {
+            console.log(`[AuthC] Password mismatch for officer ${email}.`);
+            res.status(401).json({ message: 'Invalid email or password' });
+            return;
+        }
+        // officer._id and officer.name should now be correctly typed
+        const token = generateToken(officer._id.toString()); 
+        console.log(`[AuthC] ${context} successful for ${email}.`);
+        res.status(200).json({
+            token,
+            user: { id: officer._id.toString(), name: officer.name, email: officer.email, role: 'officer' },
+        });
+    } catch (error) {
+        handleAuthError(res, error, context);
+    }
+};
+
+// --- Voter Identification & OTP Request by ID ---
+export const initiateVoterOtpById = async (req: Request, res: Response): Promise<void> => {
+  const { aadharNumber, registerNumber } = req.body;
+  const context = "voter OTP initiation by ID";
+  console.log(`[AuthC] ${context} for Aadhaar: ${aadharNumber}, RegisterNo: ${registerNumber}`);
+
+  if (!aadharNumber || !registerNumber) {
+    res.status(400).json({ message: 'Aadhaar number and Register number are required.' });
+    return;
+  }
 
   try {
-    if (!email || !password) {
-      console.log('[Auth] Officer login failed: Email or password missing.');
-      res.status(400).json({ message: 'Email and password are required' });
+    const voter: VoterDocument | null = await Voter.findOne({ aadharNumber, registerNumber });
+
+    if (!voter) {
+      console.log(`[AuthC] No voter found for Aadhaar: ${aadharNumber}, RegisterNo: ${registerNumber}.`);
+      res.status(404).json({ message: 'Voter not found with provided details. Please ensure you are registered correctly.' });
       return;
     }
 
-    const officer = (await Officer.findOne({ email })) as OfficerDocument | null;
-
-    if (!officer) {
-      console.log(`[Auth] Officer login failed: No officer found with email ${email}.`);
-      // Send a generic message to the client for security, but log details on server
-      res.status(401).json({ message: 'Invalid email or password' });
-      return;
-    }
-    console.log(`[Auth] Officer found: ${officer.email}, ID: ${officer._id}, Name: ${officer.name}`);
-    // console.log(`[Auth] Stored hashed password for ${email}: ${officer.password}`); // For debugging only, remove in prod
-
-    if (!officer.password) {
-        console.log(`[Auth] Officer login failed: Officer ${email} has no password set in the database.`);
-        res.status(500).json({ message: 'Server configuration error - officer account incomplete.' });
+    if (voter.hasVoted) {
+        console.log(`[AuthC] OTP initiation attempt for already voted voter: ${aadharNumber}`);
+        res.status(403).json({ message: 'This voter has already cast their vote and cannot initiate a new session.' });
         return;
     }
 
-    const isMatch = await bcrypt.compare(password, officer.password);
-    console.log(`[Auth] Password comparison result for ${email}: ${isMatch}`);
-
-    if (!isMatch) {
-      console.log(`[Auth] Officer login failed: Password mismatch for email ${email}.`);
-      // Send a generic message to the client
-      res.status(401).json({ message: 'Invalid email or password' });
-      return;
+    if (!voter.phoneNumber) {
+        console.error(`[AuthC] CRITICAL: Phone number missing for voter Aadhaar: ${aadharNumber}. Cannot send OTP.`);
+        res.status(500).json({ message: 'Registered phone number not found for this voter. Please contact support.' });
+        return;
     }
-
-    const token = generateToken(officer._id.toString());
-    console.log(`[Auth] Officer login successful for ${email}. Token generated.`);
-
-    res.status(200).json({
-      token,
-      user: { // Key is 'user'
-        id: officer._id.toString(),
-        name: officer.name, // Include name
-        email: officer.email,
-        role: 'officer',
-      },
+    
+    await sendOtpToPhone(voter.phoneNumber);
+    
+    console.log(`[AuthC] OTP sent to phone number associated with Aadhaar: ${aadharNumber}. (OTP logged by otpUtils for dev)`);
+    res.status(200).json({ 
+        message: `OTP has been sent to your registered mobile number.`,
+        contextIdentifiers: { aadharNumber, registerNumber } 
     });
-  } catch (err) {
-    const error = err as Error;
-    console.error('[Auth] Officer login server error:', error.message, error.stack);
-    res.status(500).json({ message: 'Internal server error' });
+
+  } catch (error) {
+    handleAuthError(res, error, context);
   }
 };
 
-// 📲 Send OTP to voter's phone
-export const sendOtp = async (req: Request, res: Response) => {
-  const { phone } = req.body;
-  console.log(`[Auth] OTP send attempt for phone: ${phone}`);
+// --- Verify OTP for ID-based flow & Issue Face Verification Token ---
+export const verifyVoterIdOtp = async (req: Request, res: Response): Promise<void> => {
+  const { aadharNumber, registerNumber, otp } = req.body;
+  const context = "voter ID OTP verification";
+  console.log(`[AuthC] ${context} for Aadhaar: ${aadharNumber}, RegNo: ${registerNumber} with OTP: ${otp ? otp.substring(0,2) + '****' : 'N/A'}`);
 
-  if (!phone) {
-    res.status(400).json({ message: 'Phone is required' });
+  if (!aadharNumber || !registerNumber || !otp) {
+    res.status(400).json({ message: 'Aadhaar number, Register number, and OTP are required.' });
     return;
   }
 
   try {
-    await sendOtpToPhone(phone);
-    console.log(`[Auth] OTP sent successfully to ${phone}.`);
-    res.status(200).json({ message: 'OTP sent successfully' });
-  } catch (err) {
-    const error = err as Error;
-    console.error('[Auth] OTP send error:', error.message);
-    res.status(500).json({ message: 'Failed to send OTP' });
-  }
-};
+    const voter: VoterDocument | null = await Voter.findOne({ aadharNumber, registerNumber });
 
-// ✅ Verify OTP and create/fetch voter
-export const verifyOtpCode = async (req: Request, res: Response) => {
-  const { phone, otp } = req.body;
-  console.log(`[Auth] OTP verify attempt for phone: ${phone}`);
-
-  if (!phone || !otp) {
-    res.status(400).json({ message: 'Phone and OTP required' });
-    return;
-  }
-
-  try {
-    const valid = await verifyOtp(phone, otp);
-    if (!valid) {
-      console.log(`[Auth] OTP verification failed for ${phone}: Invalid OTP.`);
-      res.status(401).json({ message: 'Invalid OTP' });
-      return;
-    }
-    console.log(`[Auth] OTP verified successfully for ${phone}.`);
-
-    let voter = await Voter.findOne({ phone });
     if (!voter) {
-      console.log(`[Auth] No voter found for ${phone}, creating new voter.`);
-      voter = await Voter.create({ phone }); // Ensure your Voter model can be created with just a phone initially or adapt
-      console.log(`[Auth] New voter created for ${phone} with ID: ${voter._id}.`);
-    } else {
-      console.log(`[Auth] Existing voter found for ${phone} with ID: ${voter._id}.`);
+      console.log(`[AuthC] Voter not found during OTP verification for Aadhaar: ${aadharNumber}.`);
+      res.status(404).json({ message: 'Voter not found. Cannot verify OTP.' });
+      return;
+    }
+    if (!voter.phoneNumber) { 
+        console.error(`[AuthC] CRITICAL: Phone number missing for voter Aadhaar: ${aadharNumber} during OTP verify.`);
+        res.status(500).json({ message: 'Internal error: Voter phone details missing for OTP verification.' });
+        return;
+    }
+    if (voter.hasVoted) {
+        console.log(`[AuthC] OTP verification attempt for already voted voter: ${aadharNumber}`);
+        res.status(403).json({ message: 'This voter has already cast their vote.' });
+        return;
     }
 
-    const token = generateToken(voter._id.toString());
-    console.log(`[Auth] Token generated for voter ${phone}.`);
+    const isValidOtp = await verifyOtp(voter.phoneNumber, otp);
+
+    if (!isValidOtp) {
+      console.log(`[AuthC] Invalid OTP for Aadhaar: ${aadharNumber}.`);
+      res.status(401).json({ message: 'Invalid OTP or OTP has expired.' });
+      return;
+    }
+    console.log(`[AuthC] OTP successfully verified for Aadhaar: ${aadharNumber}.`);
+
+    await clearOtp(voter.phoneNumber);
+
+    const faceVerificationPurpose = 'voter-face-verification-session';
+    // voter._id, voter.aadharNumber, voter.registerNumber, etc. are now correctly typed
+    const faceVerificationSessionToken = jwt.sign(
+        { 
+            voterId: voter._id.toString(), 
+            purpose: faceVerificationPurpose,
+            aadharNumber: voter.aadharNumber, 
+            registerNumber: voter.registerNumber
+        }, 
+        process.env.JWT_SECRET!, 
+        { expiresIn: '10m' } 
+    );
 
     res.status(200).json({
-      token,
-      user: { // Consistent 'user' key
-        id: voter._id.toString(),
-        phone: voter.phone,
-        // name: voter.name, // Include if available and needed
-        role: 'voter',
-      },
+      message: 'OTP verified successfully. Please proceed to face verification.',
+      sessionToken: faceVerificationSessionToken, 
+      voterInfo: { 
+        id: voter._id.toString(), // Now correctly typed
+        fullName: voter.fullName,
+        photoUrl: voter.photoUrl 
+      }
     });
-  } catch (err) {
-    const error = err as Error;
-    console.error('[Auth] OTP verification error:', error.message);
-    res.status(500).json({ message: 'Server error during OTP verification' });
+
+  } catch (error) {
+    handleAuthError(res, error, context);
   }
 };
