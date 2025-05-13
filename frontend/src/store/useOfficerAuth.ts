@@ -32,6 +32,7 @@ export const useOfficerAuth = create<OfficerAuthState>()(
         });
       },
       logout: () => {
+        localStorage.removeItem('token'); // << ADD
         set({
           isAuthenticated: false,
           token: null,

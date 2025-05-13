@@ -1,4 +1,3 @@
-// frontend/src/pages/OfficerLogin.tsx
 import { useState, FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Input } from '@/components/ui/Input'; // Ensure path is correct
@@ -41,10 +40,12 @@ export default function OfficerLogin() {
         return;
       }
 
+      localStorage.setItem('token', token); // << Added as requested
+
       login(token, user);
       navigate('/officer/dashboard');
 
-    } catch (err) { // ESLint error was here
+    } catch (err) {
       console.error('Login page error:', err);
       setIsLoading(false); // Ensure loading is stopped on error
 
@@ -57,17 +58,11 @@ export default function OfficerLogin() {
         } else {
           setError('Login failed: An unexpected error occurred while setting up the request.');
         }
-      } else if (err instanceof Error) { // Handle generic errors
+      } else if (err instanceof Error) {
         setError(`Login failed: ${err.message}`);
-      } else { // Handle unknown errors
+      } else {
         setError('Login failed: An unknown error occurred. Please try again.');
       }
-    } finally {
-      // This block will always execute, but setIsLoading(false) is already in catch.
-      // If there are scenarios where it's not set in catch, ensure it here.
-      // For instance, if the try block itself could throw a non-Axios error not caught by the specific checks.
-      // However, the current structure should cover it.
-      // setIsLoading(false); // Already handled, but good to be mindful.
     }
   };
 

@@ -14,7 +14,10 @@ export const useVoterAuth = create<VoterAuthState>()(
       token: null,
       voter: null,
       login: (token, voter) => set({ token, voter }),
-      logout: () => set({ token: null, voter: null }),
+      logout: () => {
+        localStorage.removeItem('token') // << ADDED EXACTLY AS YOU SAID
+        set({ token: null, voter: null })
+      },
     }),
     { name: 'voter-auth' }
   )

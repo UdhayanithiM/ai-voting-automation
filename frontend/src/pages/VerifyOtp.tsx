@@ -7,6 +7,8 @@ import { Button } from '@/components/ui/Button'
 
 export default function VerifyOtp() {
   const [otp, setOtp] = useState('')
+  const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const phone = localStorage.getItem('otpPhone') || ''
   const navigate = useNavigate()
   const { login } = useVoterAuth()
@@ -15,7 +17,6 @@ export default function VerifyOtp() {
     const value = e.target.value.replace(/\D/g, '').slice(0, 6)
     setOtp(value)
 
-    // Optionally navigate when OTP is complete
     if (value.length === 6) {
       setTimeout(() => {
         handleVerify()
@@ -31,13 +32,30 @@ export default function VerifyOtp() {
   }
 
   const handleVerify = async () => {
+    setIsLoading(true)
+    setError(null)
     try {
       const res = await API.post('/auth/voter/verify-otp', { phone, otp })
-      login(res.data.token, res.data.voter)
+      const { token, user } = res.data
+
+      if (!token || !user) {
+        setError('Verification failed: Invalid response from server.')
+        setIsLoading(false)
+        return
+      }
+
+      localStorage.setItem('token', token) // << Added as requested
+      login(token, user)
       navigate('/voter-details')
-    } catch (err) {
-      console.error(err)
-      alert('Invalid OTP')
+    } catch (err: any) {
+      console.error('OTP Verification error:', err)
+      if (err.response && err.response.data && err.response.data.message) {
+        setError(err.response.data.message)
+      } else {
+        setError('Invalid OTP or server error.')
+      }
+    } finally {
+      setIsLoading(false)
     }
   }
 
@@ -46,15 +64,21 @@ export default function VerifyOtp() {
       <div className="w-full max-w-md space-y-6">
         <h1 className="text-2xl font-bold text-center text-gray-800">Verify OTP</h1>
         <p className="text-center text-gray-500 text-sm">Enter the 6-digit code sent to your phone</p>
+        {error && (
+          <p className="text-red-500 text-center bg-red-100 p-3 rounded-md">
+            {error}
+          </p>
+        )}
         <form onSubmit={handleSubmit} className="space-y-4">
           <Input
             placeholder="Enter OTP"
             value={otp}
             onChange={handleChange}
             className="tracking-widest text-center text-lg"
+            disabled={isLoading}
           />
-          <Button type="submit" disabled={otp.length < 6}>
-            Verify
+          <Button type="submit" disabled={otp.length < 6 || isLoading}>
+            {isLoading ? 'Verifying...' : 'Verify'}
           </Button>
         </form>
       </div>
