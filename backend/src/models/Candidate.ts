@@ -9,6 +9,7 @@ export interface CandidateDocument extends Document {
   electionId?: Types.ObjectId; // Optional: For specific elections
   createdAt?: Date;
   updatedAt?: Date;
+  voteCount: number;
 }
 
 const candidateSchema = new Schema<CandidateDocument>(
@@ -17,7 +18,8 @@ const candidateSchema = new Schema<CandidateDocument>(
     party: { type: String },
     symbolUrl: { type: String },
     position: { type: String }, // e.g., "Student Council President"
-    electionId: { type: Schema.Types.ObjectId, ref: 'Election' }, // Link to an Election model if you plan one
+    electionId: { type: Schema.Types.ObjectId, ref: 'Election' },
+    voteCount: { type: Number, default: 0, required: true }, // Link to an Election model if you plan one
   },
   { timestamps: true }
 );

@@ -18,7 +18,7 @@ export default function Welcome() {
 
       {/* Buttons */}
       <div className="space-y-4 w-full max-w-md mt-10">
-        <Button className="w-full" onClick={() => navigate('/login')}>
+        <Button className="w-full" onClick={() => navigate('/voter-id-entry')}>
           Voter Login
         </Button>
         <Button

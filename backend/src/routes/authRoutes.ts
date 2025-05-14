@@ -3,21 +3,25 @@ import express from 'express';
 import {
   loginAdmin,
   loginOfficer,
-  initiateVoterOtpById,  // NEW: For Aadhaar/RegNo based OTP request
-  verifyVoterIdOtp       // NEW: For verifying OTP in the new flow
-  // Old OTP routes can be removed or commented if this new flow is the primary one
-  // sendOtp,
-  // verifyOtpCode,
-} from '../controllers/authController'; // Ensure functions are exported from here
+  initiateVoterOtpById, // Assuming this is your function from authController.ts
+  verifyVoterIdOtp,     // <<<< This function handles the OTP verification
+  // ... any other authentication controller functions you have
+} from '../controllers/authController'; // Ensure this path is correct
 
 const router = express.Router();
 
-// Admin and Officer Login (standard email/password + JWT)
+// --- Admin and Officer Login Routes ---
 router.post('/admin/login', loginAdmin);
 router.post('/officer/login', loginOfficer);
 
-// New Voter Identification and OTP Flow (ID -> OTP -> Session Token for Face Verify)
-router.post('/voter/initiate-identification-otp', initiateVoterOtpById);
-router.post('/voter/verify-identification-otp', verifyVoterIdOtp);
+// --- Voter Authentication Flow (Aadhaar/Register Number based) ---
+
+// Route for VoterIdEntryPage.tsx to request OTP
+// Full path will be: POST /api/auth/voter/initiate-otp-by-id
+router.post('/voter/initiate-otp-by-id', initiateVoterOtpById);
+
+// Route for VerifyOtpPage.tsx to verify the OTP
+// Full path will be: POST /api/auth/voter/verify-id-otp
+router.post('/voter/verify-id-otp', verifyVoterIdOtp); // <<<< THIS LINE IS ESSENTIAL
 
 export default router;

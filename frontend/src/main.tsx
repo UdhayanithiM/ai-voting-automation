@@ -1,74 +1,102 @@
-import React from 'react'
-import ReactDOM from 'react-dom/client'
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
+// src/main.tsx
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { BrowserRouter, Routes, Route } from 'react-router-dom';
 
-// Global Styles
-import './index.css'
+import './index.css';
 
-// Voter Screens
-import Welcome from '@/pages/Welcome'
-import Login from '@/pages/Login'
-import VerifyOtp from '@/pages/VerifyOtp'
-import VoterDetails from '@/pages/VoterDetails'
-import PreviewDetails from '@/pages/PreviewDetails'
-import SelfieCapture from '@/pages/SelfieCapture'
-import Confirmation from '@/pages/Confirmation'
-import VotePage from '@/pages/VotePage'
-import VoteStatus from '@/pages/VoteStatus'
-import Feedback from '@/pages/Feedback'
+// --- Voter Flow Pages ---
+import Welcome from '@/pages/Welcome';
+import VoterIdEntryPage from '@/pages/VoterIdEntryPage';
+import VerifyOtpPage from '@/pages/VerifyOtp';
+import VotePage from '@/pages/VotePage';
+import VoteStatusPage from '@/pages/VoteStatus';
+import Confirmation from '@/pages/Confirmation';
+import Feedback from '@/pages/Feedback';
+import PreviewDetails from '@/pages/PreviewDetails';
+import SelfieCapture from '@/pages/SelfieCapture';
+import VoterDetails from '@/pages/VoterDetails';
+import FaceVerificationStubPage from '@/pages/voter/FaceVerificationStubPage';
 
-// Admin Screens
-import AdminLogin from '@/pages/admin/AdminLogin'
-import AdminLayout from '@/pages/admin/AdminLayout'
-import AdminDashboard from '@/pages/admin/AdminDashboard'
-import VoterTable from '@/pages/admin/VoterTable'
-import ResultsLogs from '@/pages/admin/ResultsLogs'
-import RegisterOfficer from '@/pages/admin/RegisterOfficer'
-import ProtectedAdminRoute from '@/pages/admin/ProtectedAdminRoute'
+// --- Admin Flow Pages ---
+import AdminLogin from '@/pages/admin/AdminLogin';
+import AdminLayout from '@/pages/admin/AdminLayout';
+import AdminDashboard from '@/pages/admin/AdminDashboard';
+import VoterTable from '@/pages/admin/VoterTable';
+import ResultsLogs from '@/pages/admin/ResultsLogs';
+import RegisterOfficer from '@/pages/admin/RegisterOfficer';
+import ProtectedAdminRoute from '@/pages/admin/ProtectedAdminRoute';
 
-// Officer Screens
-import OfficerLogin from '@/pages/OfficerLogin'
-import OfficerDashboard from '@/pages/officer/OfficerDashboard'
-import QueueManagement from '@/pages/officer/QueueManagement'
-import ProtectedOfficerRoute from '@/pages/officer/ProtectedOfficerRoute'
-import VerifyVoter from '@/pages/officer/VerifyVoter'
-import OfficerReports from '@/pages/officer/OfficerReports'
+// --- Officer Flow Pages ---
+import OfficerLogin from '@/pages/OfficerLogin';
+import OfficerDashboard from '@/pages/officer/OfficerDashboard';
+import QueueManagement from '@/pages/officer/QueueManagement';
+import ProtectedOfficerRoute from '@/pages/officer/ProtectedOfficerRoute';
+import VerifyVoter from '@/pages/officer/VerifyVoter';
+import OfficerReports from '@/pages/officer/OfficerReports';
 
-// Protected Routes (Voter)
-import { ProtectedVoteRoute } from '@/routes/ProtectedVoteRoute'
-import { ProtectedVoteStatus } from '@/routes/ProtectedVoteStatus'
+// --- Voter Protected Route ---
+import ProtectedVoterAuthRoute from '@/routes/ProtectedVoterAuthRoute';
+
+// --- Placeholder Stub Pages ---
+
+const QueueDisplayStubPage = () => <div className="p-4">Queue Display Stub Page (To be implemented)</div>;
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>
       <Routes>
-        {/* Voter Routes */}
+        {/* Welcome */}
         <Route path="/" element={<Welcome />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/verify-otp" element={<VerifyOtp />} />
+
+        {/* --- Voter MVP Flow --- */}
+        <Route path="/voter-id-entry" element={<VoterIdEntryPage />} />
+        <Route path="/verify-otp" element={<VerifyOtpPage />} />
+
+        <Route
+          path="/face-verification-stub"
+          element={
+            <ProtectedVoterAuthRoute>
+              <FaceVerificationStubPage />
+            </ProtectedVoterAuthRoute>
+          }
+        />
+
+        <Route
+          path="/queue-display-stub"
+          element={
+            <ProtectedVoterAuthRoute>
+              <QueueDisplayStubPage />
+            </ProtectedVoterAuthRoute>
+          }
+        />
+
+        <Route
+          path="/vote"
+          element={
+            <ProtectedVoterAuthRoute>
+              <VotePage />
+            </ProtectedVoterAuthRoute>
+          }
+        />
+
+        <Route
+          path="/votestatus"
+          element={
+            <ProtectedVoterAuthRoute>
+              <VoteStatusPage />
+            </ProtectedVoterAuthRoute>
+          }
+        />
+
+        {/* Other Voter Pages (Optional, non-protected yet) */}
         <Route path="/voter-details" element={<VoterDetails />} />
         <Route path="/preview-details" element={<PreviewDetails />} />
         <Route path="/selfie-capture" element={<SelfieCapture />} />
         <Route path="/confirmation" element={<Confirmation />} />
         <Route path="/feedback" element={<Feedback />} />
-        <Route
-          path="/vote"
-          element={
-            <ProtectedVoteRoute>
-              <VotePage />
-            </ProtectedVoteRoute>
-          }
-        />
-        <Route
-          path="/votestatus"
-          element={
-            <ProtectedVoteStatus>
-              <VoteStatus />
-            </ProtectedVoteStatus>
-          }
-        />
 
-        {/* Officer Routes */}
+        {/* --- Officer Pages --- */}
         <Route path="/officer/login" element={<OfficerLogin />} />
         <Route
           path="/officer/dashboard"
@@ -103,7 +131,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           }
         />
 
-        {/* Admin Routes */}
+        {/* --- Admin Pages --- */}
         <Route path="/admin/login" element={<AdminLogin />} />
         <Route path="/admin" element={<AdminLayout />}>
           <Route
@@ -139,7 +167,10 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             }
           />
         </Route>
+
+        {/* Optional: 404 Not Found Page */}
+        {/* <Route path="*" element={<NotFoundPage />} /> */}
       </Routes>
     </BrowserRouter>
   </React.StrictMode>
-)
+);
