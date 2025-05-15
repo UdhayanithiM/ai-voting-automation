@@ -27,30 +27,24 @@ export default function VerifyOtpPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const navigate = useNavigate();
-  const voterAuthLogin = useVoterAuth((state) => state.login);
+  const setOtpToken = useVoterAuth.getState().setOtpToken;
+  const setVoterDetails = useVoterAuth.getState().setVoterDetails;
 
-  // Ref to ensure navigation logic runs only once per successful attempt
   const navigationAttemptedRef = useRef(false);
-
   const phoneHint = localStorage.getItem('otpPhoneHint');
 
   useEffect(() => {
-    // This effect checks if the page was loaded without the necessary context from localStorage.
-    // It should not interfere if navigation was already triggered by handleVerifyOtp.
-    if (navigationAttemptedRef.current) {
-      return; 
-    }
+    if (navigationAttemptedRef.current) return;
 
     const aadharFromStorage = localStorage.getItem('aadharNumberForOtp');
     const registerFromStorage = localStorage.getItem('registerNumberForOtp');
 
     if (!aadharFromStorage || !registerFromStorage) {
       console.warn('VerifyOtpPage: Mount check - Aadhaar/Register number missing. Navigating to ID entry.');
-      navigationAttemptedRef.current = true; // Prevent this from running again if navigate causes quick re-render
+      navigationAttemptedRef.current = true;
       navigate('/voter-id-entry', { replace: true });
     }
-    
-  }, [navigate]); // Runs on mount and if navigate instance changes (rare)
+  }, [navigate]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = e.target.value.replace(/\D/g, '').slice(0, 6);
@@ -59,7 +53,7 @@ export default function VerifyOtpPage() {
   };
 
   const handleVerifyOtp = async (currentOtp: string) => {
-    if (navigationAttemptedRef.current && isLoading) return; // Prevent double submission if already navigating
+    if (navigationAttemptedRef.current && isLoading) return;
 
     if (currentOtp.length !== 6) {
       setError('OTP must be 6 digits.');
@@ -70,8 +64,8 @@ export default function VerifyOtpPage() {
     const currentRegister = localStorage.getItem('registerNumberForOtp');
 
     if (!currentAadhar || !currentRegister) {
-        setError('Required voter identifiers are missing. Please go back and enter them.');
-        return;
+      setError('Required voter identifiers are missing. Please go back and enter them.');
+      return;
     }
 
     setIsLoading(true);
@@ -87,21 +81,17 @@ export default function VerifyOtpPage() {
       console.log('Backend response in VerifyOtp.tsx:', response.data);
 
       if (response.data && response.data.success === true && response.data.token && response.data.voter && response.data.voter.id) {
-        voterAuthLogin(response.data.token, response.data.voter);
-        localStorage.setItem('voterSessionToken', response.data.token);
-        
+        setOtpToken(response.data.token); // ✅ set otpToken in Zustand
+        setVoterDetails(response.data.voter); // ✅ store voter details in Zustand
+
         localStorage.removeItem('aadharNumberForOtp');
         localStorage.removeItem('registerNumberForOtp');
         localStorage.removeItem('otpPhoneHint');
-        
-        console.log('SUCCESS CONDITION MET: Setting navigationAttemptedRef and navigating to /face-verification-stub');
-        navigationAttemptedRef.current = true; // Set flag *before* calling navigate
-        
-        // Navigate. The component will unmount.
-        navigate('/face-verification-stub');
-        // No need to setIsLoading(false) here as the component unmounts.
-        return; 
 
+        console.log('SUCCESS CONDITION MET: Setting navigationAttemptedRef and navigating to /face-verification-stub');
+        navigationAttemptedRef.current = true;
+        navigate('/face-verification-stub');
+        return;
       } else {
         setError(response.data?.message || 'Verification failed: Invalid response from server.');
       }
@@ -122,8 +112,7 @@ export default function VerifyOtpPage() {
         setError('An unknown error occurred.');
       }
     }
-    // This will only be reached if the success block wasn't fully executed or an error occurred
-    setIsLoading(false); 
+    setIsLoading(false);
   };
 
   const handleSubmit = (e: FormEvent) => {
@@ -132,7 +121,6 @@ export default function VerifyOtpPage() {
   };
 
   return (
-    // ... Your JSX remains the same ...
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-green-100 via-teal-50 to-cyan-100 px-4 py-12">
       <div className="w-full max-w-md bg-white shadow-xl rounded-xl p-8 md:p-10 space-y-6">
         <div className="text-center">
@@ -172,22 +160,23 @@ export default function VerifyOtpPage() {
             {isLoading ? 'Verifying...' : 'Verify OTP'}
           </Button>
         </form>
-         <div className="text-center mt-4">
-            <Button
-                variant="link"
-                onClick={() => {
-                  if(!isLoading) {
-                    navigationAttemptedRef.current = true;
-                    navigate('/voter-id-entry');
-                  }
-                }}
-                disabled={isLoading}
-            >
-                Go Back
-            </Button>
+
+        <div className="text-center mt-4">
+          <Button
+            variant="link"
+            onClick={() => {
+              if (!isLoading) {
+                navigationAttemptedRef.current = true;
+                navigate('/voter-id-entry');
+              }
+            }}
+            disabled={isLoading}
+          >
+            Go Back
+          </Button>
         </div>
       </div>
-       <footer className="mt-8 text-center text-sm text-gray-500">
+      <footer className="mt-8 text-center text-sm text-gray-500">
         <p>&copy; {new Date().getFullYear()} Secure eVoting System. All rights reserved.</p>
       </footer>
     </div>

@@ -17,6 +17,9 @@ import PreviewDetails from '@/pages/PreviewDetails';
 import SelfieCapture from '@/pages/SelfieCapture';
 import VoterDetails from '@/pages/VoterDetails';
 import FaceVerificationStubPage from '@/pages/voter/FaceVerificationStubPage';
+import QueueDisplayStubPage from '@/pages/voter/QueueDisplayStubPage';
+import VotingPageStub from '@/pages/voter/VotingPageStub';
+import ConfirmationStubPage from '@/pages/voter/ConfirmationStubPage';
 
 // --- Admin Flow Pages ---
 import AdminLogin from '@/pages/admin/AdminLogin';
@@ -38,38 +41,42 @@ import OfficerReports from '@/pages/officer/OfficerReports';
 // --- Voter Protected Route ---
 import ProtectedVoterAuthRoute from '@/routes/ProtectedVoterAuthRoute';
 
-// --- Placeholder Stub Pages ---
-
-const QueueDisplayStubPage = () => <div className="p-4">Queue Display Stub Page (To be implemented)</div>;
-
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter>
       <Routes>
-        {/* Welcome */}
+        {/* --- Public Welcome Page --- */}
         <Route path="/" element={<Welcome />} />
 
-        {/* --- Voter MVP Flow --- */}
+        {/* --- Voter Flow (MVP) --- */}
         <Route path="/voter-id-entry" element={<VoterIdEntryPage />} />
         <Route path="/verify-otp" element={<VerifyOtpPage />} />
 
         <Route
           path="/face-verification-stub"
           element={
-            <ProtectedVoterAuthRoute>
+            <ProtectedVoterAuthRoute tokenType="otpTokenRequired">
               <FaceVerificationStubPage />
             </ProtectedVoterAuthRoute>
           }
         />
-
         <Route
           path="/queue-display-stub"
           element={
-            <ProtectedVoterAuthRoute>
+            <ProtectedVoterAuthRoute tokenType="votingTokenRequired">
               <QueueDisplayStubPage />
             </ProtectedVoterAuthRoute>
           }
         />
+        <Route
+          path="/voting-page-stub"
+          element={
+            <ProtectedVoterAuthRoute tokenType="votingTokenRequired">
+              <VotingPageStub />
+            </ProtectedVoterAuthRoute>
+          }
+        />
+        <Route path="/confirmation-stub" element={<ConfirmationStubPage />} />
 
         <Route
           path="/vote"
@@ -79,7 +86,6 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             </ProtectedVoterAuthRoute>
           }
         />
-
         <Route
           path="/votestatus"
           element={
@@ -89,7 +95,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           }
         />
 
-        {/* Other Voter Pages (Optional, non-protected yet) */}
+        {/* --- Optional Voter Pages --- */}
         <Route path="/voter-details" element={<VoterDetails />} />
         <Route path="/preview-details" element={<PreviewDetails />} />
         <Route path="/selfie-capture" element={<SelfieCapture />} />
@@ -168,7 +174,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
           />
         </Route>
 
-        {/* Optional: 404 Not Found Page */}
+        {/* Optional: 404 Not Found */}
         {/* <Route path="*" element={<NotFoundPage />} /> */}
       </Routes>
     </BrowserRouter>

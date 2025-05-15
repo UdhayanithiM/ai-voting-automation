@@ -1,42 +1,67 @@
 // src/routes/ProtectedVoterAuthRoute.tsx
-import React from 'react';
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
-import { useVoterAuth } from '@/store/useVoterAuth'; // Your Zustand store for voter session
+import React, { useEffect } from 'react';
+import { Navigate, useLocation } from 'react-router-dom';
+import { useVoterAuth } from '@/store/useVoterAuth';
 
-interface ProtectedVoterAuthRouteProps {
-  children?: React.ReactNode;
+export interface ProtectedVoterAuthRouteProps {
+  children: React.ReactElement;
+  /** Specifies which token is primarily required for this route */
+  tokenType?: 'otpTokenRequired' | 'votingTokenRequired' | 'genericTokenRequired' | 'anyVoterTokenRequired';
 }
 
-const ProtectedVoterAuthRoute: React.FC<ProtectedVoterAuthRouteProps> = ({ children }) => {
-  // Select the token. If the token exists, we assume the voter object in the store is also valid
-  // as they should be set together by voterAuthLogin.
-  // This selector is more stable as it directly returns a potentially null value or a string.
-  const token = useVoterAuth((state) => state.token);
+const ProtectedVoterAuthRoute: React.FC<ProtectedVoterAuthRouteProps> = ({
+  children,
+  tokenType = 'anyVoterTokenRequired',
+}) => {
+  const otpToken = useVoterAuth((state) => state.otpToken);
+  const votingToken = useVoterAuth((state) => state.votingToken);
+  const genericToken = useVoterAuth((state) => state.token);
   const location = useLocation();
 
-  const isAuthenticated = !!token; // Simplified check: if token exists, consider authenticated for routing.
-                                  // Your API calls will still be validated by the backend using this token.
+  let isAuthenticated = false;
+  let determinedRedirectPath = '/'; // Default redirect to a safe public page
 
-  // Logging for debug purposes
-  React.useEffect(() => {
+  switch (tokenType) {
+    case 'otpTokenRequired':
+      isAuthenticated = !!otpToken;
+      determinedRedirectPath = '/voter-id-entry';
+      break;
+    case 'votingTokenRequired':
+      isAuthenticated = !!votingToken;
+      determinedRedirectPath = otpToken ? '/face-verification-stub' : '/voter-id-entry';
+      break;
+    case 'genericTokenRequired':
+      isAuthenticated = !!genericToken;
+      determinedRedirectPath = '/'; // Or your generic login page
+      break;
+    case 'anyVoterTokenRequired': // This means any token that signifies an active voter session part
+    default:
+      isAuthenticated = !!otpToken || !!votingToken; 
+      determinedRedirectPath = '/voter-id-entry';
+      break;
+  }
+  
+  useEffect(() => {
     console.log(
-      '[ProtectedVoterAuthRoute] Effect Check:',
-      { token, isAuthenticated, currentPath: location.pathname }
+      `[ProtectedVoterAuthRoute] Path: ${location.pathname}, ` +
+      `ReqToken: ${tokenType}, ` +
+      `HasGeneric: ${!!genericToken}, `+
+      `HasOTP: ${!!otpToken}, ` +
+      `HasVoting: ${!!votingToken}, ` +
+      `Auth: ${isAuthenticated}`
     );
-  }, [token, isAuthenticated, location.pathname]);
-
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname, tokenType, genericToken, otpToken, votingToken]);
 
   if (!isAuthenticated) {
-    console.log(
-      `[ProtectedVoterAuthRoute] Not authenticated (token: ${token}). Path: ${location.pathname}. Redirecting to /voter-id-entry.`
-    );
-    // Redirect to the voter ID entry page if not authenticated.
-    // Save the current location so we can send them back after login.
-    return <Navigate to="/voter-id-entry" state={{ from: location }} replace />;
+    if (location.pathname === determinedRedirectPath) {
+      console.warn(`[ProtectedVoterAuthRoute] Infinite redirect prevented for ${location.pathname}. Check token flow.`);
+      return <div>Session access error. Please <a href="/voter-id-entry" className="start-over-link">start over</a>.</div>;
+    }
+    return <Navigate to={determinedRedirectPath} state={{ from: location }} replace />;
   }
 
-  // If authenticated, render the children (the protected page) or an Outlet for nested routes.
-  return children ? <>{children}</> : <Outlet />;
+  return children;
 };
 
 export default ProtectedVoterAuthRoute;
