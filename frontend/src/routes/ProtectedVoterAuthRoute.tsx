@@ -5,7 +5,6 @@ import { useVoterAuth } from '@/store/useVoterAuth';
 
 export interface ProtectedVoterAuthRouteProps {
   children: React.ReactElement;
-  /** Specifies which token is primarily required for this route */
   tokenType?: 'otpTokenRequired' | 'votingTokenRequired' | 'genericTokenRequired' | 'anyVoterTokenRequired';
 }
 
@@ -15,48 +14,69 @@ const ProtectedVoterAuthRoute: React.FC<ProtectedVoterAuthRouteProps> = ({
 }) => {
   const otpToken = useVoterAuth((state) => state.otpToken);
   const votingToken = useVoterAuth((state) => state.votingToken);
-  const genericToken = useVoterAuth((state) => state.token);
+  const genericToken = useVoterAuth((state) => state.token); // Assuming you might use this for a general voter session
   const location = useLocation();
 
   let isAuthenticated = false;
-  let determinedRedirectPath = '/'; // Default redirect to a safe public page
+  let determinedRedirectPath = '/voter-id-entry'; // Default to the start of the voter flow
 
   switch (tokenType) {
     case 'otpTokenRequired':
-      isAuthenticated = !!otpToken;
-      determinedRedirectPath = '/voter-id-entry';
+      // If otpToken is present, user is authenticated for this step.
+      // OR, if otpToken is now null BUT votingToken IS present,
+      // it means the user JUST successfully completed the step guarded by otpToken
+      // and received the votingToken. We allow this transition.
+      isAuthenticated = !!otpToken || (otpToken === null && !!votingToken);
+      if (!isAuthenticated) {
+        determinedRedirectPath = '/voter-id-entry';
+      }
+      // If isAuthenticated is true due to votingToken being present,
+      // the component (FaceVerificationStubPage) will navigate away shortly.
+      // This check prevents redirect if we are in a valid transition.
       break;
+
     case 'votingTokenRequired':
       isAuthenticated = !!votingToken;
-      determinedRedirectPath = otpToken ? '/face-verification-stub' : '/voter-id-entry';
+      if (!isAuthenticated) {
+        // If votingToken is required but missing, redirect.
+        // If otpToken is still around, maybe to face-verification, else to start.
+        determinedRedirectPath = otpToken ? '/face-verification-stub' : '/voter-id-entry';
+      }
       break;
+
     case 'genericTokenRequired':
       isAuthenticated = !!genericToken;
-      determinedRedirectPath = '/'; // Or your generic login page
+      determinedRedirectPath = '/'; // Or your generic voter login page
       break;
-    case 'anyVoterTokenRequired': // This means any token that signifies an active voter session part
+
+    case 'anyVoterTokenRequired': // Fallback for any active part of the voter session
     default:
-      isAuthenticated = !!otpToken || !!votingToken; 
-      determinedRedirectPath = '/voter-id-entry';
+      isAuthenticated = !!otpToken || !!votingToken || !!genericToken;
+      if (!isAuthenticated) {
+        determinedRedirectPath = '/voter-id-entry';
+      }
       break;
   }
   
+  // This useEffect is for logging and can be kept or removed in production
   useEffect(() => {
     console.log(
-      `[ProtectedVoterAuthRoute] Path: ${location.pathname}, ` +
-      `ReqToken: ${tokenType}, ` +
-      `HasGeneric: ${!!genericToken}, `+
-      `HasOTP: ${!!otpToken}, ` +
-      `HasVoting: ${!!votingToken}, ` +
-      `Auth: ${isAuthenticated}`
+      `[ProtectedVoterAuthRoute] Path: ${location.pathname}, ReqToken: ${tokenType}, ` +
+      `HasGeneric: ${!!genericToken}, HasOTP: ${!!otpToken}, HasVoting: ${!!votingToken}, Auth: ${isAuthenticated}`
     );
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [location.pathname, tokenType, genericToken, otpToken, votingToken]);
+  }, [location.pathname, tokenType, genericToken, otpToken, votingToken, isAuthenticated]); // Added isAuthenticated
 
   if (!isAuthenticated) {
+    // Prevent infinite redirect loops if already on the determinedRedirectPath
     if (location.pathname === determinedRedirectPath) {
-      console.warn(`[ProtectedVoterAuthRoute] Infinite redirect prevented for ${location.pathname}. Check token flow.`);
-      return <div>Session access error. Please <a href="/voter-id-entry" className="start-over-link">start over</a>.</div>;
+      console.warn(`[ProtectedVoterAuthRoute] Infinite redirect prevented for ${location.pathname}. Current auth state does not permit access.`);
+      // Provide a more user-friendly message or a way to recover
+      return (
+        <div className="min-h-screen flex flex-col items-center justify-center p-4">
+            <p className="text-red-500 font-semibold text-lg">Session access error or invalid state.</p>
+            <p className="mt-2">Please <a href="/voter-id-entry" className="text-blue-600 hover:underline">click here to start over</a>.</p>
+        </div>
+      );
     }
     return <Navigate to={determinedRedirectPath} state={{ from: location }} replace />;
   }

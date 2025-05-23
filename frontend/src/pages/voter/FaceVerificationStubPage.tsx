@@ -14,7 +14,7 @@ interface ErrorResponseData {
 interface FaceVerificationStubSuccessData {
   success: boolean;
   message: string;
-  token?: string; // This is the votingToken
+  token?: string; // This is the votingToken from backend
 }
 
 export default function FaceVerificationStubPage() {
@@ -25,7 +25,6 @@ export default function FaceVerificationStubPage() {
 
   const otpTokenFromStore = useVoterAuth((state) => state.otpToken);
   const setVotingTokenInStore = useVoterAuth((state) => state.setVotingToken);
-  // const setOtpTokenInStore = useVoterAuth((state) => state.setOtpToken); // Not strictly needed as setVotingToken clears otpToken
 
   const handleVerifyFace = useCallback(async () => {
     setIsLoading(true);
@@ -35,8 +34,8 @@ export default function FaceVerificationStubPage() {
     if (!otpTokenFromStore) {
       setError('OTP Session token not found. Please verify OTP again.');
       setIsLoading(false);
-      navigate('/verify-otp', { replace: true }); // Immediate navigation
-      return; // Exit
+      navigate('/verify-otp', { replace: true });
+      return;
     }
 
     try {
@@ -44,9 +43,7 @@ export default function FaceVerificationStubPage() {
         '/verification/face-stub',
         {},
         {
-          headers: {
-            Authorization: `Bearer ${otpTokenFromStore}`,
-          },
+          // Axios interceptor will add the Authorization header with otpTokenFromStore
         }
       );
 
@@ -54,17 +51,16 @@ export default function FaceVerificationStubPage() {
         const newVotingToken = response.data.token;
 
         if (newVotingToken) {
-          setVotingTokenInStore(newVotingToken); // This sets votingToken AND sets otpToken to null in Zustand
-          // setOtpTokenInStore(null); // This line is redundant if useVoterAuth.setVotingToken handles it.
-                                     // Your current useVoterAuth.setVotingToken does set otpToken to null.
-          
           setStatusMessage(response.data.message || 'Face verification successful. Proceeding...');
           
-          // NO setTimeout: Navigate immediately
-          navigate('/queue-display-stub'); 
+          // 1. Navigate FIRST
+          navigate('/queue-display-stub');
+
+          // 2. THEN call the store action. The delay for clearing otpToken is now handled INSIDE the store action.
+          setVotingTokenInStore(newVotingToken); 
           
-          // Important: return here to prevent setIsLoading(false) below from running
-          // if navigation is successful. The component will unmount.
+          // Important: return to prevent further state changes like setIsLoading(false) in this render cycle
+          // as the component is unmounting.
           return; 
         } else {
           setError('Verification successful, but session update failed (voting token missing). Please try again.');
@@ -82,8 +78,8 @@ export default function FaceVerificationStubPage() {
         if (axiosError.response?.data) {
           setError(
             axiosError.response.data.error ||
-              axiosError.response.data.message ||
-              'Face verification stub call failed.'
+            axiosError.response.data.message ||
+            'Face verification stub call failed.'
           );
         } else if (axiosError.request) {
           setError('No response from server. Please check connection.');
@@ -96,26 +92,31 @@ export default function FaceVerificationStubPage() {
         setError('An unknown error occurred during face verification.');
       }
     }
-    // This line will only be reached if an error occurred above OR newVotingToken was null
+    // This will only be reached if an error occurred before navigation
     setIsLoading(false);
   }, [otpTokenFromStore, navigate, setVotingTokenInStore]);
 
   useEffect(() => {
-    handleVerifyFace();
-  }, [handleVerifyFace]);
+    // This effect ensures handleVerifyFace is called when otpTokenFromStore is available.
+    // ProtectedVoterAuthRoute should ideally prevent rendering if otpTokenFromStore is null initially.
+    if (otpTokenFromStore) {
+      handleVerifyFace();
+    } else if (!isLoading) { // Avoid calling navigate if it's already loading/verifying
+      console.warn("FaceVerificationStubPage: otpToken not found in useEffect, redirecting to /verify-otp");
+      navigate('/verify-otp', { replace: true });
+    }
+  }, [otpTokenFromStore, handleVerifyFace, isLoading, navigate]); // Added isLoading and navigate
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-purple-100 via-pink-50 to-red-100 px-4 py-12 text-center">
       <div className="w-full max-w-md bg-white shadow-xl rounded-xl p-8 md:p-10 space-y-6">
         <h1 className="text-3xl font-bold text-gray-800">Face Verification</h1>
-
         {isLoading && (
           <div className="flex flex-col items-center space-y-3 py-4">
             <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
             <p className="text-lg text-blue-600 font-semibold">{statusMessage}</p>
           </div>
         )}
-
         {!isLoading && error && (
           <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-md my-4" role="alert">
             <p className="font-bold">Verification Error</p>
@@ -125,10 +126,9 @@ export default function FaceVerificationStubPage() {
             </Button>
           </div>
         )}
-
         {!isLoading && !error && statusMessage.includes('successful') && (
           <div className="text-green-600 font-semibold text-lg py-4">
-            <p>✅ {statusMessage}</p> {/* This will likely only flash before navigation */}
+            <p>✅ {statusMessage}</p>
           </div>
         )}
       </div>

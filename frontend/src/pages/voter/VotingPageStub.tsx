@@ -1,10 +1,8 @@
 // src/pages/voter/VotingPageStub.tsx
-import { useState, useEffect, useCallback } from 'react'; // Added useCallback
+import { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { useVoterAuth } from '@/store/useVoterAuth';
-// import API from '@/lib/axios'; // Keep commented if not making API call in stub
-// import axios, { AxiosError } from 'axios'; // Keep commented
 
 interface Candidate {
   id: string;
@@ -22,49 +20,44 @@ const MOCK_CANDIDATES: Candidate[] = [
 
 export default function VotingPageStub() {
   const navigate = useNavigate();
-
-  // ✅ Select primitives or stable functions directly from the store
   const votingToken = useVoterAuth((state) => state.votingToken);
-  const otpToken = useVoterAuth((state) => state.otpToken); // Needed for more intelligent redirect
-  const clearAuth = useVoterAuth((state) => state.clearAuth); // Stable function reference
+  const otpToken = useVoterAuth((state) => state.otpToken); // For redirect logic in useEffect
+  const clearAuth = useVoterAuth((state) => state.clearAuth); // Store action
 
   const [selectedCandidateId, setSelectedCandidateId] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false); // For vote casting process
+  const [isLoading, setIsLoading] = useState(false);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [isInitialCheckDone, setIsInitialCheckDone] = useState(false); // To manage initial redirection logic
+  const [isInitialCheckDone, setIsInitialCheckDone] = useState(false);
 
   useEffect(() => {
-    // This effect runs once after the component mounts and votingToken/otpToken values are available.
-    // It decides if an immediate redirect is necessary.
+    // This effect handles redirection if the page is loaded without a votingToken.
     if (!votingToken) {
-      // Only redirect if the initial check is done.
-      // This prevents redirecting before Zustand has a chance to load persisted state.
-      if (isInitialCheckDone) { 
+      if (isInitialCheckDone) { // Only redirect after initial check to allow store rehydration
         alert('Voting session is invalid or has expired. Please complete previous steps.');
         const redirectPath = otpToken ? '/face-verification-stub' : '/voter-id-entry';
         console.log(`VotingPageStub: No votingToken. OTP token ${otpToken ? 'exists' : 'missing'}. Redirecting to ${redirectPath}`);
         navigate(redirectPath, { replace: true });
       }
     }
-    setIsInitialCheckDone(true); // Mark that the initial check has been performed.
-  }, [votingToken, otpToken, navigate, isInitialCheckDone]); // isInitialCheckDone helps run this logic carefully
+    setIsInitialCheckDone(true);
+  }, [votingToken, otpToken, navigate, isInitialCheckDone]);
 
   const handleSelectCandidate = (candidateId: string) => {
     setSelectedCandidateId(candidateId);
-    setError(null); 
+    setError(null);
   };
 
-  const handleCastVote = useCallback(async () => { // useCallback for stable function reference
+  const handleCastVote = useCallback(async () => {
     if (!selectedCandidateId) {
       setError('Please select a candidate before casting your vote.');
       return;
     }
-    if (!votingToken) { // Double check token before attempting vote cast
-        setError('Your voting session is no longer valid. Please start over.');
-        setIsLoading(false); // Ensure loading is reset
-        setTimeout(() => navigate('/voter-id-entry', {replace: true}), 3000);
-        return;
+    if (!votingToken) {
+      setError('Your voting session is no longer valid. Please start over.');
+      setIsLoading(false);
+      setTimeout(() => navigate('/voter-id-entry', { replace: true }), 1500); // Allow time to see error
+      return;
     }
 
     setIsLoading(true);
@@ -73,32 +66,34 @@ export default function VotingPageStub() {
 
     // Simulate API call delay
     setTimeout(() => {
-      setStatusMessage('Your vote has been successfully recorded (stubbed). Thank you for voting!');
-      clearAuth(); // Clear all auth tokens (otpToken, votingToken, generic token, voter details)
-      setIsLoading(false);
-      
+      setStatusMessage('Your vote has been successfully recorded! Redirecting...');
+      setIsLoading(false); // Show success message on this page
+
+      // Navigate AFTER a brief moment to allow the user to see the success message.
       setTimeout(() => {
-        navigate('/confirmation-stub'); 
-      }, 2500); 
-    }, 1500);
- 
-  }, [selectedCandidateId, navigate, clearAuth, votingToken]); // Added votingToken to deps
+        navigate('/confirmation-stub');
+        // Call clearAuth. The delay for clearing tokens is now INSIDE the store's clearAuth action.
+        clearAuth();
+      }, 1000); // 1-second delay for UX, then navigate & trigger clearAuth. Adjust as needed.
+
+    }, 1500); // This outer timeout simulates the API call duration
+  }, [selectedCandidateId, navigate, clearAuth, votingToken]);
 
   if (!isInitialCheckDone) {
-     return (
+    return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <p className="text-xl font-semibold">Initializing voting page...</p>
       </div>
-     );
+    );
   }
-  
-  // If after initial check, token is still missing, and we are not in a loading state (e.g. casting vote)
-  // This indicates an issue that should have been caught by useEffect navigation or ProtectedRoute.
+
+  // This check should ideally be redundant if ProtectedVoterAuthRoute works correctly.
+  // It's a fallback.
   if (!votingToken && !isLoading) { 
-    console.error("VotingPageStub: Rendered without votingToken after initial check. This shouldn't happen.");
+    console.error("VotingPageStub: Rendered without votingToken after initial check and not loading.");
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
-        <p className="text-red-500 font-semibold">Critical session error. Redirecting...</p>
+        <p className="text-red-500 font-semibold">Critical session error. Please <a href="/voter-id-entry">start over</a>.</p>
       </div>
     );
   }
@@ -111,6 +106,7 @@ export default function VotingPageStub() {
           <p className="text-gray-600 mt-2">Select your preferred candidate from the list below.</p>
         </header>
 
+        {/* Loading State */}
         {isLoading && (
           <div className="flex flex-col items-center space-y-3 py-4">
             <div className="w-16 h-16 border-4 border-green-500 border-t-transparent rounded-full animate-spin"></div>
@@ -118,6 +114,7 @@ export default function VotingPageStub() {
           </div>
         )}
 
+        {/* Error Message */}
         {!isLoading && error && (
           <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-md my-4" role="alert">
             <p className="font-bold">Error</p>
@@ -125,14 +122,15 @@ export default function VotingPageStub() {
           </div>
         )}
 
+        {/* Success Message (before navigating) */}
         {!isLoading && !error && statusMessage && statusMessage.includes('successfully recorded') && (
            <div className="bg-green-100 border-l-4 border-green-500 text-green-700 p-4 rounded-md my-4">
             <p className="font-bold">Success!</p>
             <p>{statusMessage}</p>
-          </div>
+           </div>
         )}
 
-        {/* Only show the voting form if not loading AND vote hasn't been successfully recorded yet */}
+        {/* Voting Form - only show if not loading AND vote hasn't been (successfully) recorded yet on THIS page view */}
         {!isLoading && !(statusMessage && statusMessage.includes('successfully recorded')) && (
           <form onSubmit={(e) => { e.preventDefault(); handleCastVote(); }} className="space-y-6">
             <fieldset className="space-y-4">
@@ -142,9 +140,9 @@ export default function VotingPageStub() {
                   key={candidate.id}
                   htmlFor={candidate.id}
                   className={`flex items-center p-4 border rounded-lg cursor-pointer transition-all duration-150 ease-in-out
-                    ${selectedCandidateId === candidate.id 
-                      ? 'bg-blue-500 border-blue-600 text-white shadow-lg scale-105' 
-                      : 'bg-gray-50 hover:bg-gray-100 border-gray-300'}`}
+                    ${selectedCandidateId === candidate.id
+                    ? 'bg-blue-500 border-blue-600 text-white shadow-lg scale-105'
+                    : 'bg-gray-50 hover:bg-gray-100 border-gray-300'}`}
                 >
                   <input
                     type="radio"
@@ -161,10 +159,10 @@ export default function VotingPageStub() {
                 </label>
               ))}
             </fieldset>
-            <Button 
-              type="submit" 
+            <Button
+              type="submit"
               className="w-full py-3 text-lg bg-green-600 hover:bg-green-700 disabled:opacity-50"
-              disabled={!selectedCandidateId || isLoading || !votingToken /* Also disable if votingToken somehow became null */}
+              disabled={!selectedCandidateId || isLoading || !votingToken}
             >
               {isLoading ? 'Casting Vote...' : 'Cast My Vote'}
             </Button>
