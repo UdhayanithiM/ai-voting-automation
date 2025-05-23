@@ -1,33 +1,34 @@
 // backend/src/models/Voter.ts
 import { Schema, model, Document } from 'mongoose';
 
-// Define the interface for the Voter document
 export interface VoterDocument extends Document {
-  fullName: string;         // Corresponds to 'name' in your basic idea
-  dob: string;              // Date of Birth (consider storing as Date type if complex queries needed)
-  address: string;          // New field from your basic idea
-  photoUrl?: string;        // URL or path to the stored ID proof photo (your 'photo')
-  aadharNumber: string;    // New field (your 'aadharNumber'), will be a primary identifier
-  registerNumber: string;   // New field (your 'voterNumber' / college register no), another identifier
-  phoneNumber: string;      // New field, must be pre-registered for sending OTP
-  hasVoted: boolean;        // New field to track if the vote has been cast
-  // Removed fields like old 'voterId', 'approved', 'flagged', 'status' for MVP simplicity
-  // We can add status fields back later if needed (e.g. 'PendingFaceVerification', 'VerifiedForVoting')
-  createdAt?: Date;         // Automatically managed by Mongoose timestamps
-  updatedAt?: Date;  
-  _id: string;              // Automatically managed by Mongoose timestamps
+  fullName: string;
+  dob: string; 
+  address: string;
+  photoUrl?: string;
+  
+  // --- Identifier Fields ---
+  aadharNumber?: string; // Now optional at the schema level
+  voterIdNumber?: string;  // NEW: For Voter ID - also optional
+  registerNumber?: string; // For other contexts like College ID - also optional
+
+  phoneNumber: string; 
+  hasVoted: boolean;
+  
+  createdAt?: Date;
+  updatedAt?: Date;
+  _id: string; 
 }
 
-// Define the Mongoose schema
 const voterSchema = new Schema<VoterDocument>(
   {
     fullName: { 
         type: String, 
-        required: [true, 'Full name is required.'] // Added required message
+        required: [true, 'Full name is required.']
     },
     dob: { 
         type: String, 
-        required: [true, 'Date of birth is required.'] // Consider validating format or using Date type
+        required: [true, 'Date of birth is required.']
     },
     address: { 
         type: String, 
@@ -35,23 +36,33 @@ const voterSchema = new Schema<VoterDocument>(
     },
     photoUrl: { 
         type: String, 
-        default: '' // Or make it required if an ID photo is mandatory for registration
+        default: '' 
     },
     aadharNumber: { 
         type: String, 
-        required: [true, 'Aadhaar number is required.'], 
-        unique: true, // Aadhaar should be globally unique
-        index: true   // Good for query performance
+        // required: false, // No longer universally required, context will determine
+        unique: true,    // Still needs to be unique if present
+        sparse: true,    // IMPORTANT: Allows multiple documents to have null/missing aadharNumber
+                         // without violating the unique constraint. Only non-null values are unique.
+        index: true      
+    },
+    voterIdNumber: {     // NEW FIELD
+        type: String,
+        // required: false,
+        unique: true,
+        sparse: true,    // Same reasoning as aadharNumber
+        index: true
     },
     registerNumber: { 
         type: String, 
-        required: [true, 'Register number (college ID) is required.'],
-        index: true   // Good for query performance
+        // required: false, // No longer universally required
+        // unique: true,   // Make unique if a register number should be globally unique
+        // sparse: true,   // Add if making it unique
+        index: true      
     },
     phoneNumber: { 
         type: String, 
         required: [true, 'Phone number is required for OTP.'],
-        // Add validation for phone number format if desired
     },
     hasVoted: { 
         type: Boolean, 
@@ -60,13 +71,35 @@ const voterSchema = new Schema<VoterDocument>(
     },
   },
   { 
-    timestamps: true // Automatically adds createdAt and updatedAt fields
+    timestamps: true 
   }
 );
 
-// Optional: If the combination of aadharNumber and registerNumber must be unique (e.g. one aadhar can have multiple regNo in diff contexts, but not here)
-// voterSchema.index({ aadhaarNumber: 1, registerNumber: 1 }, { unique: true });
-// However, making aadharNumber globally unique is usually sufficient.
+// Add a compound index if you want to ensure that for a specific type of election context, 
+// the combination of (say) election_id and aadharNumber is unique, 
+// or election_id and voterIdNumber is unique.
+// For now, individual uniqueness with sparse should cover many cases.
 
-// Export the Mongoose model
+// Consider a pre-save hook to ensure at least one required identifier is present based on context,
+// or handle this validation at the controller level during voter registration/import.
+// For example:
+voterSchema.pre('save', function(next) {
+  const voter = this as VoterDocument;
+  // Example validation: For MVP, we might rely on controller logic or data seeding script.
+  // For a more robust model, you could add context-specific validation here,
+  // but it can get complex if context isn't stored directly on the voter model.
+  // For now, let's assume the seeding script and controllers will ensure valid data.
+  
+  // Ensure that if aadharNumber is provided, it's trimmed (example of a simple hook)
+  if (voter.isModified('aadharNumber') && voter.aadharNumber) {
+    voter.aadharNumber = voter.aadharNumber.trim();
+  }
+  if (voter.isModified('voterIdNumber') && voter.voterIdNumber) {
+    voter.voterIdNumber = voter.voterIdNumber.trim();
+  }
+  // Add similar for registerNumber if desired
+  next();
+});
+
+
 export const Voter = model<VoterDocument>('Voter', voterSchema);

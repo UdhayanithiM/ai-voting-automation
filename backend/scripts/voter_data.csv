@@ -1,6 +1,6 @@
-fullName,dob,address,photoUrl,aadharNumber,registerNumber,phoneNumber
-Udhayanithi ,25-01-2005,chennai,https://github.com/UdhayanithiM/ai-voting-automation/blob/main/backend/scripts/udhaya.png,2122,CBIT001,9600689746
-,,,,,,
-,,,,,,
-,,,,,,
-,,,,,,
+fullName,dob,address,photoUrl,aadharNumber,voterIdNumber,registerNumber,phoneNumber
+John Doe,1990-01-01,123 Main St,https://example.com/photos/johndoe.jpg,123456789012,VOTE1234,REG123,+919876543210
+Jane Smith,1992-05-12,456 Elm St,,234567890123,,REG456,+919812345678
+Ravi Kumar,1985-03-15,789 Oak Rd,https://example.com/photos/ravi.jpg,,VOTE5678,,+918123456789
+Meena Iyer,1994-07-20,321 Lake View,,345678901234,,, +917654321098
+Aamir Khan,1990-09-09,10 Bollywood Blvd,https://example.com/photos/aamir.jpg,,,,+919999999999

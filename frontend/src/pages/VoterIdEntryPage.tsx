@@ -1,149 +1,183 @@
-// src/pages/voter/VoterIdEntryPage.tsx
-import { useState, FormEvent } from 'react';
+import { useState, FormEvent, ChangeEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
-import axios, { AxiosError } from 'axios'; // Import AxiosError for better error typing
+import axios, { AxiosError } from 'axios'; // For types, and direct use in catch block
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
-import API from '@/lib/axios';
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import { Label } from "@/components/ui/label";
+import API from '@/lib/axios'; // Your pre-configured Axios instance
 
-// Interface for the expected error response from the backend
-interface ErrorResponseData {
-  error?: string; // If backend sends error in { "error": "message" }
-  message?: string; // Or if backend sends error in { "message": "message" }
+// Define types for expected data structures
+type IdentifierType = 'AADHAAR' | 'VOTER_ID'; //
+
+interface BackendErrorResponse { //
+  error?: string;
+  message?: string;
 }
 
-// Interface for the expected success response from your initiate-otp-by-id endpoint
-interface InitiateOtpSuccessData {
-    success?: boolean; // Making this optional as your backend might not send it
-    message: string;   // Expecting a message on success
-    phoneHint?: string;
-    contextIdentifiers?: {
-        aadharNumber: string;
-        registerNumber: string;
-    };
+interface RequestOtpSuccessResponse { //
+  success: boolean;
+  message: string;
+  phoneHint?: string; // Optional: if backend provides a hint
 }
 
 export default function VoterIdEntryPage() {
-  const [aadharNumber, setAadharNumber] = useState('');
-  const [registerNumber, setRegisterNumber] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const navigate = useNavigate();
+  const [identifierType, setIdentifierType] = useState<IdentifierType>('AADHAAR'); //
+  const [identifierValue, setIdentifierValue] = useState(''); //
+  const [isLoading, setIsLoading] = useState(false); //
+  const [error, setError] = useState<string | null>(null); //
+  const navigate = useNavigate(); //
 
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setError(null);
+  const handleIdentifierTypeChange = (value: string) => { //
+    setIdentifierType(value as IdentifierType); //
+    setIdentifierValue(''); // Reset value when type changes
+    setError(null); // Clear error when type changes
+  };
 
-    if (!aadharNumber.trim() || !registerNumber.trim()) {
-      setError('Both Aadhaar Number and Register Number are required.');
-      return;
+  const handleIdentifierValueChange = (e: ChangeEvent<HTMLInputElement>) => { //
+    const { value } = e.target; //
+    // Basic input filtering
+    if (identifierType === 'AADHAAR') { //
+      setIdentifierValue(value.replace(/\D/g, '').slice(0, 12)); // Allow only numbers, max 12 digits for Aadhaar
+    } else if (identifierType === 'VOTER_ID') { //
+      setIdentifierValue(value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 15)); // Example: Alphanumeric, max 15 for Voter ID
+    } else {
+      setIdentifierValue(value); //
     }
-    if (!/^\d{12}$/.test(aadharNumber)) {
-      setError('Aadhaar Number must be 12 digits.');
-      return;
+    setError(null); //
+  };
+
+  const validateInput = (): boolean => { //
+    if (!identifierValue.trim()) { //
+      setError(`Please enter your ${identifierType === 'AADHAAR' ? 'Aadhaar Number' : 'Voter ID'}.`); //
+      return false; //
     }
-    // Add any specific validation for registerNumber if needed
+    if (identifierType === 'AADHAAR' && identifierValue.length !== 12) { //
+      setError('Aadhaar Number must be 12 digits.'); //
+      return false; //
+    }
+    // Example validation for Voter ID length
+    if (identifierType === 'VOTER_ID' && (identifierValue.length < 6 || identifierValue.length > 15)) { //
+      setError('Voter ID format is invalid.'); //
+      return false; //
+    }
+    return true; //
+  };
 
-    setIsLoading(true);
+  const handleSubmit = async (e: FormEvent) => { //
+    e.preventDefault(); //
+    setError(null); //
 
+    if (!validateInput()) { //
+      return; //
+    }
+
+    setIsLoading(true); //
     try {
-      const response = await API.post<InitiateOtpSuccessData>('/auth/voter/initiate-otp-by-id', {
-        aadharNumber,
-        registerNumber,
+      // THIS IS THE CORRECTED LINE:
+      const response = await API.post<RequestOtpSuccessResponse>('/auth/voter/initiate-otp-by-id', { //
+        identifierType: identifierType, //
+        identifierValue: identifierValue, //
       });
 
-      // Check if the response indicates success.
-      // Your backend sends a 200 OK with a specific message for success.
-      // It does not seem to send a `success: true` field based on your authController.
-      // So, we'll infer success if the API call itself didn't throw an error (caught by catch block)
-      // AND if the message is the expected success message.
-      // A more robust backend would return an explicit success flag.
-      if (response.status === 200 && response.data && response.data.message === "OTP has been sent to your registered mobile number.") {
-        localStorage.setItem('aadharNumberForOtp', aadharNumber);
-        localStorage.setItem('registerNumberForOtp', registerNumber);
-        if (response.data.phoneHint) {
-          localStorage.setItem('otpPhoneHint', response.data.phoneHint);
-        }
-        console.log('OTP Initiated successfully, navigating to /verify-otp');
-        navigate('/verify-otp');
-      } else {
-        // If backend returns 200 but not the expected success message, or an explicit success: false
-        setError(response.data.message || 'Failed to initiate OTP. Unexpected response from server.');
-      }
-    } catch (err: unknown) { // Changed from 'any' to 'unknown' for type safety
-      console.error('Error initiating OTP:', err);
-      if (axios.isAxiosError(err)) {
-        const axiosError = err as AxiosError<ErrorResponseData>;
-        if (axiosError.response?.data) {
-          // Use the error message from the backend if available
-          setError(axiosError.response.data.error || axiosError.response.data.message || 'An error occurred while requesting OTP.');
-        } else if (axiosError.request) {
-          setError('No response from server. Please check your network or if the server is running.');
+      console.log('VoterIdEntryPage.tsx: OTP Request API Response:', response.data); //
+
+      if (response.data && response.data.success) { //
+        // Store necessary info for the VerifyOtpPage
+        localStorage.setItem('otpIdentifierType', identifierType); //
+        localStorage.setItem('otpIdentifierValue', identifierValue); //
+        if (response.data.phoneHint) { //
+          localStorage.setItem('otpPhoneHint', response.data.phoneHint); //
         } else {
-          setError('Error setting up the request to the server.');
+          localStorage.removeItem('otpPhoneHint'); //
         }
-      } else if (err instanceof Error) { // Handle generic JavaScript errors
-        setError(`An unexpected error occurred: ${err.message}`);
+
+        console.log('VoterIdEntryPage: OTP Request successful, navigating to /verify-otp. Data for next page:', //
+          { identifierType, identifierValue, phoneHint: response.data.phoneHint } //
+        );
+        navigate('/verify-otp'); //
       } else {
-         setError('An unexpected error occurred. Please try again.');
+        setError(response.data?.message || 'Failed to request OTP. Please check your details.'); //
+      }
+    } catch (err: unknown) { //
+      console.error('Request OTP error in VoterIdEntryPage.tsx:', err); //
+      if (axios.isAxiosError(err)) { //
+        const axiosError = err as AxiosError<BackendErrorResponse>; //
+        if (axiosError.response?.data) { //
+          setError(axiosError.response.data.message || axiosError.response.data.error || 'An error occurred while requesting OTP.'); //
+        } else if (axiosError.request) { //
+          setError('No response from server. Please try again later.'); //
+        } else {
+          setError('Error setting up OTP request. Please try again.'); //
+        }
+      } else {
+        setError('An unexpected error occurred. Please try again.'); //
       }
     } finally {
-      setIsLoading(false);
+      setIsLoading(false); //
     }
   };
 
+  // JSX part remains the same as you provided
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-100 via-indigo-50 to-purple-100 px-4 py-12">
       <div className="w-full max-w-md bg-white shadow-xl rounded-xl p-8 md:p-10 space-y-6">
         <div className="text-center">
           <h1 className="text-3xl font-bold text-gray-800">Voter Identification</h1>
           <p className="mt-2 text-sm text-gray-600">
-            Please enter your Aadhaar and College Register Number to proceed.
+            Please select your ID type and enter the number to request an OTP.
           </p>
         </div>
 
-        {error && (
-          <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-md" role="alert">
-            <p className="font-bold">Error</p>
-            <p>{error}</p>
-          </div>
-        )}
-
         <form onSubmit={handleSubmit} className="space-y-6">
           <div>
-            <label htmlFor="aadharNumber" className="block text-sm font-medium text-gray-700 mb-1">
-              Aadhaar Number
-            </label>
-            <Input
-              id="aadharNumber"
-              type="text"
-              placeholder="Enter your 12-digit Aadhaar"
-              value={aadharNumber}
-              onChange={(e) => setAadharNumber(e.target.value.replace(/\D/g, '').slice(0,12))}
+            <Label className="text-sm font-medium text-gray-700 mb-2 block">Select ID Type:</Label>
+            <RadioGroup
+              defaultValue={identifierType}
+              onValueChange={handleIdentifierTypeChange}
+              className="flex space-x-4"
               disabled={isLoading}
-              required
-              className="mt-1"
-            />
+            >
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="AADHAAR" id="type-aadhaar" />
+                <Label htmlFor="type-aadhaar" className="cursor-pointer">Aadhaar Number</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <RadioGroupItem value="VOTER_ID" id="type-voterid" />
+                <Label htmlFor="type-voterid" className="cursor-pointer">Voter ID</Label>
+              </div>
+            </RadioGroup>
           </div>
 
           <div>
-            <label htmlFor="registerNumber" className="block text-sm font-medium text-gray-700 mb-1">
-              College Register Number
-            </label>
+            <Label htmlFor="identifierValue" className="block text-sm font-medium text-gray-700 mb-1">
+              {identifierType === 'AADHAAR' ? 'Aadhaar Number' : 'Voter ID Number'}
+            </Label>
             <Input
-              id="registerNumber"
+              id="identifierValue"
               type="text"
-              placeholder="Enter your College ID"
-              value={registerNumber}
-              onChange={(e) => setRegisterNumber(e.target.value.toUpperCase())}
+              placeholder={`Enter your ${identifierType === 'AADHAAR' ? '12-digit Aadhaar' : 'Voter ID'}`}
+              value={identifierValue}
+              onChange={handleIdentifierValueChange}
               disabled={isLoading}
               required
+              maxLength={identifierType === 'AADHAAR' ? 12 : 15}
               className="mt-1"
             />
           </div>
 
-          <Button type="submit" disabled={isLoading} className="w-full py-3 text-base">
-            {isLoading ? 'Processing...' : 'Request OTP'}
+          {error && (
+            <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-3 rounded-md text-sm" role="alert">
+              <p>{error}</p>
+            </div>
+          )}
+
+          <Button
+            type="submit"
+            disabled={isLoading || !identifierValue.trim()}
+            className="w-full py-3 text-base"
+          >
+            {isLoading ? 'Requesting OTP...' : 'Request OTP'}
           </Button>
         </form>
       </div>

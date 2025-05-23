@@ -5,121 +5,135 @@ import axios, { AxiosError } from 'axios';
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import API from '@/lib/axios';
-import { useVoterAuth } from '@/store/useVoterAuth';
+import { useVoterAuth } from '@/store/useVoterAuth'; //
 
-interface BackendErrorResponseData {
+interface BackendErrorResponseData { //
   error?: string;
   message?: string;
 }
 
-interface BackendVerifyOtpSuccessData {
+interface BackendVerifyOtpSuccessData { //
   success: boolean;
-  token: string;
+  token: string; // This will be our otpToken
   voter: {
     id: string;
-    phone: string;
+    phone: string; // Backend sends this, could be fullName or other relevant details too
+    fullName?: string; // Optional: if backend sends it
   };
   message: string;
 }
 
 export default function VerifyOtpPage() {
-  const [otp, setOtp] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const navigate = useNavigate();
-  const setOtpToken = useVoterAuth.getState().setOtpToken;
-  const setVoterDetails = useVoterAuth.getState().setVoterDetails;
+  const [otp, setOtp] = useState(''); //
+  const [isLoading, setIsLoading] = useState(false); //
+  const [error, setError] = useState<string | null>(null); //
+  const navigate = useNavigate(); //
+  const { setOtpToken, setVoterDetails } = useVoterAuth(); // Get functions from Zustand store
 
-  const navigationAttemptedRef = useRef(false);
-  const phoneHint = localStorage.getItem('otpPhoneHint');
+  const navigationAttemptedRef = useRef(false); //
+  const [phoneHint, setPhoneHint] = useState<string | null>(null); // Local state for phoneHint
 
   useEffect(() => {
     if (navigationAttemptedRef.current) return;
 
-    const aadharFromStorage = localStorage.getItem('aadharNumberForOtp');
-    const registerFromStorage = localStorage.getItem('registerNumberForOtp');
+    // WHAT TO UPDATE: Use the correct keys used in VoterIdEntryPage.tsx
+    const idTypeFromStorage = localStorage.getItem('otpIdentifierType'); //
+    const idValueFromStorage = localStorage.getItem('otpIdentifierValue'); //
+    const hint = localStorage.getItem('otpPhoneHint'); //
+    setPhoneHint(hint); // Set local state for display
 
-    if (!aadharFromStorage || !registerFromStorage) {
-      console.warn('VerifyOtpPage: Mount check - Aadhaar/Register number missing. Navigating to ID entry.');
-      navigationAttemptedRef.current = true;
-      navigate('/voter-id-entry', { replace: true });
+    // WHY TO UPDATE: To correctly check if the necessary data was passed from the previous page.
+    if (!idTypeFromStorage || !idValueFromStorage) { //
+      console.warn('VerifyOtpPage: Mount check - Identifier type or value missing from localStorage. Navigating to ID entry.'); //
+      navigationAttemptedRef.current = true; //
+      navigate('/voter-id-entry', { replace: true }); //
     }
   }, [navigate]);
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const value = e.target.value.replace(/\D/g, '').slice(0, 6);
-    setOtp(value);
-    setError(null);
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => { //
+    const value = e.target.value.replace(/\D/g, '').slice(0, 6); //
+    setOtp(value); //
+    setError(null); //
   };
 
-  const handleVerifyOtp = async (currentOtp: string) => {
-    if (navigationAttemptedRef.current && isLoading) return;
-
-    if (currentOtp.length !== 6) {
-      setError('OTP must be 6 digits.');
-      return;
+  const handleVerifyOtp = async (currentOtp: string) => { //
+    // No need for navigationAttemptedRef check here as submit is a user action
+    if (currentOtp.length !== 6) { //
+      setError('OTP must be 6 digits.'); //
+      return; //
     }
 
-    const currentAadhar = localStorage.getItem('aadharNumberForOtp');
-    const currentRegister = localStorage.getItem('registerNumberForOtp');
+    // WHAT TO UPDATE: Use the correct keys
+    const currentIdentifierType = localStorage.getItem('otpIdentifierType'); //
+    const currentIdentifierValue = localStorage.getItem('otpIdentifierValue'); //
 
-    if (!currentAadhar || !currentRegister) {
-      setError('Required voter identifiers are missing. Please go back and enter them.');
-      return;
+    // WHY TO UPDATE: To ensure we are using the data that was actually stored.
+    if (!currentIdentifierType || !currentIdentifierValue) { //
+      setError('Required voter identifiers are missing from storage. Please go back and enter them.'); //
+      return; //
     }
 
-    setIsLoading(true);
-    setError(null);
+    setIsLoading(true); //
+    setError(null); //
 
     try {
-      const response = await API.post<BackendVerifyOtpSuccessData>('/auth/voter/verify-id-otp', {
-        aadharNumber: currentAadhar,
-        registerNumber: currentRegister,
-        otp: currentOtp,
+      // WHAT TO UPDATE: Send identifierType and identifierValue in the payload
+      // WHY TO UPDATE: To match the backend controller's expected parameters.
+      const response = await API.post<BackendVerifyOtpSuccessData>('/auth/voter/verify-id-otp', { //
+        identifierType: currentIdentifierType, //
+        identifierValue: currentIdentifierValue, //
+        otp: currentOtp, //
       });
 
-      console.log('Backend response in VerifyOtp.tsx:', response.data);
+      console.log('Backend response in VerifyOtp.tsx:', response.data); //
 
       if (response.data && response.data.success === true && response.data.token && response.data.voter && response.data.voter.id) {
-        setOtpToken(response.data.token); // ✅ set otpToken in Zustand
-        setVoterDetails(response.data.voter); // ✅ store voter details in Zustand
+        setOtpToken(response.data.token); // Store the received token (otpToken for this phase)
+        setVoterDetails({ // Store voter details
+            id: response.data.voter.id,
+            phone: response.data.voter.phone,
+            fullName: response.data.voter.fullName || '', // Handle if fullName is optional
+        });
 
-        localStorage.removeItem('aadharNumberForOtp');
-        localStorage.removeItem('registerNumberForOtp');
-        localStorage.removeItem('otpPhoneHint');
+        // WHAT TO UPDATE: Remove items using the correct keys
+        // WHY TO UPDATE: To clean up localStorage correctly after use.
+        localStorage.removeItem('otpIdentifierType'); //
+        localStorage.removeItem('otpIdentifierValue'); //
+        localStorage.removeItem('otpPhoneHint'); //
 
-        console.log('SUCCESS CONDITION MET: Setting navigationAttemptedRef and navigating to /face-verification-stub');
-        navigationAttemptedRef.current = true;
-        navigate('/face-verification-stub');
-        return;
+        console.log('SUCCESS CONDITION MET: Navigating to /face-verification-stub'); //
+        // navigationAttemptedRef.current = true; // Not strictly needed here as navigate will unmount
+        navigate('/face-verification-stub'); //
+        return; // Exit function after successful navigation
       } else {
-        setError(response.data?.message || 'Verification failed: Invalid response from server.');
+        setError(response.data?.message || 'Verification failed: Invalid response from server.'); //
       }
-    } catch (err: unknown) {
-      console.error('OTP Verification error (catch block):', err);
-      if (axios.isAxiosError(err)) {
-        const axiosError = err as AxiosError<BackendErrorResponseData>;
-        if (axiosError.response?.data) {
-          setError(axiosError.response.data.error || axiosError.response.data.message || 'Invalid OTP or a server error occurred.');
-        } else if (axiosError.request) {
-          setError('Verification failed: No response from server.');
+    } catch (err: unknown) { //
+      console.error('OTP Verification error (catch block):', err); //
+      if (axios.isAxiosError(err)) { //
+        const axiosError = err as AxiosError<BackendErrorResponseData>; //
+        if (axiosError.response?.data) { //
+          setError(axiosError.response.data.error || axiosError.response.data.message || 'Invalid OTP or a server error occurred.'); //
+        } else if (axiosError.request) { //
+          setError('Verification failed: No response from server.'); //
         } else {
-          setError('Verification failed: Error setting up request.');
+          setError('Verification failed: Error setting up request.'); //
         }
-      } else if (err instanceof Error) {
-        setError(`An error occurred: ${err.message}`);
+      } else if (err instanceof Error) { //
+        setError(`An error occurred: ${err.message}`); //
       } else {
-        setError('An unknown error occurred.');
+        setError('An unknown error occurred.'); //
       }
     }
-    setIsLoading(false);
+    setIsLoading(false); //
   };
 
-  const handleSubmit = (e: FormEvent) => {
-    e.preventDefault();
-    handleVerifyOtp(otp);
+  const handleSubmit = (e: FormEvent) => { //
+    e.preventDefault(); //
+    handleVerifyOtp(otp); //
   };
 
+  // JSX part - using local state `phoneHint` for display
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-green-100 via-teal-50 to-cyan-100 px-4 py-12">
       <div className="w-full max-w-md bg-white shadow-xl rounded-xl p-8 md:p-10 space-y-6">
@@ -166,7 +180,7 @@ export default function VerifyOtpPage() {
             variant="link"
             onClick={() => {
               if (!isLoading) {
-                navigationAttemptedRef.current = true;
+                // navigationAttemptedRef.current = true; // Not strictly needed
                 navigate('/voter-id-entry');
               }
             }}

@@ -14,7 +14,7 @@ interface ErrorResponseData {
 interface FaceVerificationStubSuccessData {
   success: boolean;
   message: string;
-  token?: string; // ✅ updated to match backend
+  token?: string; // This is the votingToken
 }
 
 export default function FaceVerificationStubPage() {
@@ -25,7 +25,7 @@ export default function FaceVerificationStubPage() {
 
   const otpTokenFromStore = useVoterAuth((state) => state.otpToken);
   const setVotingTokenInStore = useVoterAuth((state) => state.setVotingToken);
-  // const setOtpTokenInStore = useVoterAuth((state) => state.setOtpToken);
+  // const setOtpTokenInStore = useVoterAuth((state) => state.setOtpToken); // Not strictly needed as setVotingToken clears otpToken
 
   const handleVerifyFace = useCallback(async () => {
     setIsLoading(true);
@@ -35,8 +35,8 @@ export default function FaceVerificationStubPage() {
     if (!otpTokenFromStore) {
       setError('OTP Session token not found. Please verify OTP again.');
       setIsLoading(false);
-      setTimeout(() => navigate('/verify-otp'), 3000);
-      return;
+      navigate('/verify-otp', { replace: true }); // Immediate navigation
+      return; // Exit
     }
 
     try {
@@ -51,15 +51,21 @@ export default function FaceVerificationStubPage() {
       );
 
       if (response.data && response.data.success) {
-        const newVotingToken = response.data.token; // ✅ corrected key
+        const newVotingToken = response.data.token;
 
         if (newVotingToken) {
-          setVotingTokenInStore(newVotingToken);
-          // setOtpTokenInStore(null);
+          setVotingTokenInStore(newVotingToken); // This sets votingToken AND sets otpToken to null in Zustand
+          // setOtpTokenInStore(null); // This line is redundant if useVoterAuth.setVotingToken handles it.
+                                     // Your current useVoterAuth.setVotingToken does set otpToken to null.
+          
           setStatusMessage(response.data.message || 'Face verification successful. Proceeding...');
-          setTimeout(() => {
-            navigate('/queue-display-stub');
-          }, 2000);
+          
+          // NO setTimeout: Navigate immediately
+          navigate('/queue-display-stub'); 
+          
+          // Important: return here to prevent setIsLoading(false) below from running
+          // if navigation is successful. The component will unmount.
+          return; 
         } else {
           setError('Verification successful, but session update failed (voting token missing). Please try again.');
           setStatusMessage('');
@@ -74,20 +80,24 @@ export default function FaceVerificationStubPage() {
       if (axios.isAxiosError(err)) {
         const axiosError = err as AxiosError<ErrorResponseData>;
         if (axiosError.response?.data) {
-          setError(axiosError.response.data.error || axiosError.response.data.message || 'Face verification stub call failed.');
+          setError(
+            axiosError.response.data.error ||
+              axiosError.response.data.message ||
+              'Face verification stub call failed.'
+          );
         } else if (axiosError.request) {
           setError('No response from server. Please check connection.');
         } else {
           setError('Error setting up request for face verification.');
         }
       } else if (err instanceof Error) {
-        setError(`An unexpected error occurred: ${err.message}`);
+        setError(`An error occurred: ${err.message}`);
       } else {
         setError('An unknown error occurred during face verification.');
       }
-    } finally {
-      setIsLoading(false);
     }
+    // This line will only be reached if an error occurred above OR newVotingToken was null
+    setIsLoading(false);
   }, [otpTokenFromStore, navigate, setVotingTokenInStore]);
 
   useEffect(() => {
@@ -118,7 +128,7 @@ export default function FaceVerificationStubPage() {
 
         {!isLoading && !error && statusMessage.includes('successful') && (
           <div className="text-green-600 font-semibold text-lg py-4">
-            <p>✅ {statusMessage}</p>
+            <p>✅ {statusMessage}</p> {/* This will likely only flash before navigation */}
           </div>
         )}
       </div>

@@ -1,179 +1,222 @@
 // backend/src/controllers/authController.ts
-import { Request, Response, NextFunction } from 'express'; // Added NextFunction
+
+import { Request, Response, NextFunction } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-
 import { Admin, AdminDocument } from '../models/Admin';
 import { Officer, OfficerDocument } from '../models/Officer';
-import { Voter, VoterDocument } from '../models/Voter'; // Your named import
+import { Voter, VoterDocument } from '../models/Voter';
+import { generateToken } from '../utils/tokenUtils';
+import { sendOtpToPhone, verifyOtp, clearOtp } from '../utils/otpUtils'; // Your existing import
+import ErrorResponse from '../utils/ErrorResponse';
+import asyncHandler from '../middleware/asyncHandler';
 
-import { generateToken } from '../utils/tokenUtils'; // Assumes this is for Admin/Officer
-import { sendOtpToPhone, verifyOtp, clearOtp } from '../utils/otpUtils';
-import ErrorResponse from '../utils/ErrorResponse';     // Assuming you have this utility
-import asyncHandler from '../middleware/asyncHandler'; // Assuming you have this utility
-
-// --- Unified error logger --- // No changes needed here if it works for you
+// --- Unified error logger ---
 const handleAuthError = (
-  res: Response,
-  error: unknown,
-  context: string,
-  statusCode: number = 500,
-  next?: NextFunction // Optional next for asyncHandler pattern
+    res: Response,
+    error: unknown,
+    context: string,
+    statusCode: number = 500,
+    next?: NextFunction
 ) => {
-  const err = error as Error;
-  console.error(`[AuthC] Error in ${context}:`, err.message, err.stack);
-  if (next && error instanceof ErrorResponse) { // If using asyncHandler, pass to it
-      return next(error);
-  }
-  if (next && !(error instanceof ErrorResponse)) {
-      return next(new ErrorResponse(`Failed during ${context}: ${err.message}`, statusCode));
-  }
-  // Fallback if next is not provided (though with asyncHandler it always should be)
-  res.status(statusCode).json({
-    success: false,
-    message: `Failed during ${context}`,
-    error: err.message,
-  });
-};
+    const err = error as Error;
+    console.error(`[AuthC] Error in ${context}:`, err.message, err.stack);
 
+    if (next && error instanceof ErrorResponse) {
+        return next(error);
+    }
+    if (next && !(error instanceof ErrorResponse)) {
+        return next(new ErrorResponse(`Failed during ${context}: ${err.message}`, statusCode));
+    }
+    res.status(statusCode).json({
+        success: false,
+        message: `Failed during ${context}`,
+        error: err.message,
+    });
+};
 
 // --- Admin Login ---
 export const loginAdmin = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const { email, password } = req.body;
+    const { email, password } = req.body;
 
-  if (!email || !password) {
-    return next(new ErrorResponse('Email and password are required', 400));
-  }
+    if (!email || !password) {
+        return next(new ErrorResponse('Email and password are required', 400));
+    }
 
-  const admin: AdminDocument | null = await Admin.findOne({ email }).select('+password'); // Ensure password is selected if not by default
-  if (!admin || !admin.password) {
-    return next(new ErrorResponse('Invalid email or password (admin not found or password field missing)', 401));
-  }
+    const admin: AdminDocument | null = await Admin.findOne({ email }).select('+password');
 
-  const isMatch = await bcrypt.compare(password, admin.password);
-  if (!isMatch) {
-    return next(new ErrorResponse('Invalid email or password (password mismatch)', 401));
-  }
+    if (!admin || !admin.password) {
+        return next(new ErrorResponse('Invalid email or password (admin not found or password field missing)', 401));
+    }
 
-  // Uses generateToken from tokenUtils, which should use process.env.JWT_SECRET
-  const token = generateToken(admin._id.toString());
+    const isMatch = await bcrypt.compare(password, admin.password);
 
-  res.status(200).json({
-    success: true,
-    token,
-    user: { id: admin._id.toString(), email: admin.email, role: 'admin' },
-  });
+    if (!isMatch) {
+        return next(new ErrorResponse('Invalid email or password (password mismatch)', 401));
+    }
+
+    const token = generateToken(admin._id.toString());
+
+    res.status(200).json({
+        success: true,
+        token,
+        user: { id: admin._id.toString(), email: admin.email, role: 'admin' },
+    });
 });
 
 // --- Officer Login ---
 export const loginOfficer = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const { email, password } = req.body;
+    const { email, password } = req.body;
 
-  if (!email || !password) {
-    return next(new ErrorResponse('Email and password are required', 400));
-  }
+    if (!email || !password) {
+        return next(new ErrorResponse('Email and password are required', 400));
+    }
 
-  const officer: OfficerDocument | null = await Officer.findOne({ email }).select('+password');
-  if (!officer || !officer.password) {
-    return next(new ErrorResponse('Invalid email or password (officer not found or password field missing)', 401));
-  }
+    const officer: OfficerDocument | null = await Officer.findOne({ email }).select('+password');
 
-  // Assuming Officer model has a comparePassword method
-  const isMatch = await (officer as any).comparePassword(password);
-  if (!isMatch) {
-    return next(new ErrorResponse('Invalid email or password (password mismatch)', 401));
-  }
+    if (!officer || !officer.password) {
+        return next(new ErrorResponse('Invalid email or password (officer not found or password field missing)', 401));
+    }
 
-  // Uses generateToken from tokenUtils, which should use process.env.JWT_SECRET
-  const token = generateToken(officer._id.toString());
+    const isMatch = await (officer as any).comparePassword(password);
 
-  res.status(200).json({
-    success: true,
-    token,
-    user: {
-      id: officer._id.toString(),
-      name: officer.name,
-      email: officer.email,
-      role: 'officer',
-    },
-  });
+    if (!isMatch) {
+        return next(new ErrorResponse('Invalid email or password (password mismatch)', 401));
+    }
+
+    const token = generateToken(officer._id.toString());
+
+    res.status(200).json({
+        success: true,
+        token,
+        user: {
+            id: officer._id.toString(),
+            name: officer.name,
+            email: officer.email,
+            role: 'officer',
+        },
+    });
 });
 
-// --- Step 1: Voter Identification & OTP Request (Aadhaar/RegNo based) ---
+// --- MODIFIED Step 1: Voter Identification & OTP Request (Context Aware) ---
 export const initiateVoterOtpById = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const { aadharNumber, registerNumber } = req.body;
+    const { identifierType, identifierValue } = req.body;
 
-  if (!aadharNumber || !registerNumber) {
-    return next(new ErrorResponse('Aadhaar number and Register number are required.', 400));
-  }
+    if (!identifierType || !identifierValue) {
+        return next(new ErrorResponse('Identifier type and value are required.', 400));
+    }
 
-  const voter: VoterDocument | null = await Voter.findOne({ aadharNumber, registerNumber });
+    let voterQuery: any = {};
+    let voterIdentifierForLog = `${identifierType}: ${identifierValue}`;
 
-  if (!voter) {
-    return next(new ErrorResponse('Voter not found. Please check your details.', 404));
-  }
+    if (identifierType === 'AADHAAR') {
+        if (!/^\d{12}$/.test(identifierValue)) {
+            return next(new ErrorResponse('Invalid Aadhaar Number format. Must be 12 digits.', 400));
+        }
+        voterQuery = { aadharNumber: identifierValue };
+    } else if (identifierType === 'VOTER_ID') {
+        if (!/^[A-Z0-9]{6,15}$/.test(identifierValue.toUpperCase())) {
+            return next(new ErrorResponse('Invalid Voter ID format.', 400));
+        }
+        voterQuery = { voterIdNumber: identifierValue.toUpperCase() };
+    } else if (identifierType === 'REGISTER_NUMBER') {
+        voterQuery = { registerNumber: identifierValue };
+    } else {
+        return next(new ErrorResponse('Unsupported identifier type provided.', 400));
+    }
 
-  if (voter.hasVoted) {
-    return next(new ErrorResponse('This voter has already cast their vote.', 403));
-  }
+    const voter: VoterDocument | null = await Voter.findOne(voterQuery);
 
-  if (!voter.phoneNumber) {
-    console.error(`[AuthC] Missing phone number for Aadhaar: ${aadharNumber}`);
-    return next(new ErrorResponse('Voter phone number missing. Contact support.', 500));
-  }
+    if (!voter) {
+        console.log(`[AuthC] Voter not found for ${voterIdentifierForLog}`);
+        return next(new ErrorResponse(`Voter not found with the provided ${identifierType}. Please check your details or register.`, 404));
+    }
 
-  await sendOtpToPhone(voter.phoneNumber); // From otpUtils - this should handle OTP generation and storage
+    if (voter.hasVoted) {
+        return next(new ErrorResponse('This voter has already cast their vote.', 403));
+    }
 
-  res.status(200).json({
-    success: true, // Explicitly send success: true
-    message: 'OTP has been sent to your registered mobile number.',
-    phoneHint: voter.phoneNumber.slice(-4), // Helpful for the user
-  });
+    if (!voter.phoneNumber) {
+        console.error(`[AuthC] Missing phone number for voter ID: ${voter._id} (Identified by ${voterIdentifierForLog})`);
+        return next(new ErrorResponse('No registered phone number found for this voter. Cannot send OTP.', 500));
+    }
+
+    try {
+        // ✅ CORRECTED: Call sendOtpToPhone as defined in your otpUtils.ts (expects 1 argument)
+        await sendOtpToPhone(voter.phoneNumber); 
+        // const otpResult = await sendOtpToPhone(voter.phoneNumber, voter._id.toString()); // OLD Line 164
+
+        console.log(`[AuthC] OTP process initiated for ${voterIdentifierForLog} (Voter ID: ${voter._id}) to phone ${voter.phoneNumber}`);
+        res.status(200).json({
+            success: true,
+            message: 'OTP has been sent to your registered mobile number.',
+            phoneHint: voter.phoneNumber.slice(-4),
+        });
+    } catch (otpError: any) {
+        console.error(`[AuthC] Error sending OTP for ${voterIdentifierForLog}:`, otpError);
+        return next(new ErrorResponse(otpError.message || 'Failed to send OTP. Please try again.', 500));
+    }
 });
 
-// --- Step 2: Verify OTP & Generate Voter Session Token ---
+// --- MODIFIED Step 2: Verify OTP & Generate Voter Session Token (Context Aware) ---
 export const verifyVoterIdOtp = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
-  const { aadharNumber, registerNumber, otp } = req.body;
+    const { identifierType, identifierValue, otp } = req.body;
 
-  if (!aadharNumber || !registerNumber || !otp) {
-    return next(new ErrorResponse('All fields (Aadhaar, RegNo, OTP) are required.', 400));
-  }
+    if (!identifierType || !identifierValue || !otp) {
+        return next(new ErrorResponse('Identifier type, value, and OTP are required.', 400));
+    }
 
-  const voter: VoterDocument | null = await Voter.findOne({ aadharNumber, registerNumber });
+    let voterQuery: any = {};
+    if (identifierType === 'AADHAAR') {
+        voterQuery = { aadharNumber: identifierValue };
+    } else if (identifierType === 'VOTER_ID') {
+        voterQuery = { voterIdNumber: identifierValue.toUpperCase() };
+    } else if (identifierType === 'REGISTER_NUMBER') {
+        voterQuery = { registerNumber: identifierValue };
+    } else {
+        return next(new ErrorResponse('Unsupported identifier type for OTP verification.', 400));
+    }
 
-  if (!voter) {
-    return next(new ErrorResponse('Voter not found. Cannot verify OTP.', 404));
-  }
+    const voter: VoterDocument | null = await Voter.findOne(voterQuery);
 
-  if (!voter.phoneNumber) {
-    return next(new ErrorResponse('Phone number missing for this voter.', 500));
-  }
+    if (!voter) {
+        return next(new ErrorResponse('Voter not found for the provided details. Cannot verify OTP.', 404));
+    }
 
-  if (voter.hasVoted) {
-    return next(new ErrorResponse('This voter has already voted.', 403));
-  }
+    if (!voter.phoneNumber) {
+        return next(new ErrorResponse('Phone number missing for this voter.', 500));
+    }
 
-  const isValidOtp = await verifyOtp(voter.phoneNumber, otp); // From otpUtils
-  if (!isValidOtp) {
-    return next(new ErrorResponse('Invalid or expired OTP.', 401));
-  }
+    if (voter.hasVoted) {
+        return next(new ErrorResponse('This voter has already voted.', 403));
+    }
 
-  await clearOtp(voter.phoneNumber); // From otpUtils
+    // ✅ CORRECTED: Call verifyOtp as defined in your otpUtils.ts (expects 2 arguments)
+    const isValidOtp = await verifyOtp(voter.phoneNumber, otp);
+    // const isValidOtp = await verifyOtp(voter.phoneNumber, otp, voter._id.toString()); // OLD Line 219
 
-  // Generate Voter Session JWT using JWT_SECRET_VOTER
-  const voterSessionToken = jwt.sign(
-    { id: voter._id.toString() }, // Payload MUST contain 'id' for protectVoterSession
-    process.env.JWT_SECRET_VOTER || 'yourDefaultStrongVoterSecret!IfEnvMissing123', // Use dedicated voter secret
-    { expiresIn: '15m' } // Short-lived session token for next steps
-  );
+    if (!isValidOtp) {
+        return next(new ErrorResponse('Invalid or expired OTP.', 401));
+    }
 
-  res.status(200).json({
-    success: true, // CRUCIAL for frontend logic
-    message: 'OTP verified. Proceed to face verification.',
-    token: voterSessionToken, // CRUCIAL: Key is 'token'
-    voter: { // CRUCIAL: Key is 'voter'
-      id: voter._id.toString(),
-      phone: voter.phoneNumber, // Map VoterDocument.phoneNumber to 'phone'
-    },
-  });
+    // ✅ CORRECTED: Call clearOtp as defined in your otpUtils.ts (expects 1 argument)
+    await clearOtp(voter.phoneNumber); 
+    // await clearOtp(voter.phoneNumber, voter._id.toString()); // OLD Line 226
+
+    const otpToken = jwt.sign(
+        { id: voter._id.toString(), purpose: 'OTP_VERIFIED_FOR_VOTER_FLOW' },
+        process.env.JWT_SECRET_VOTER || 'yourDefaultStrongVoterSecret!IfEnvMissing123',
+        { expiresIn: '10m' }
+    );
+
+    res.status(200).json({
+        success: true,
+        message: 'OTP verified. Proceed to face verification.',
+        token: otpToken,
+        voter: {
+            id: voter._id.toString(),
+            phone: voter.phoneNumber,
+            fullName: voter.fullName,
+        },
+    });
 });
