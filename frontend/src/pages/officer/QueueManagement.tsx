@@ -1,81 +1,129 @@
-import { useEffect, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { io } from 'socket.io-client'
-import useSWR from 'swr'
-import { Button } from '@/components/ui/Button'
-import { useQueueStore } from '@/store/useQueueStore'
-import API from '@/lib/axios'
+import { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { io, Socket } from 'socket.io-client'; // Ensure Socket type is imported
+import useSWR from 'swr';
+import { Button } from '@/components/ui/Button';
+import { useQueueStore } from '@/store/useQueueStore';
+import API from '@/lib/axios';
 
 interface QueueToken {
-  _id: string
-  tokenNumber: number
-  voterName: string
-  status: 'waiting' | 'completed'
+  _id: string;
+  tokenNumber: number;
+  voterName: string;
+  status: 'waiting' | 'completed';
+  // Add other fields your backend might send
 }
 
-const fetcher = (url: string) => API.get(url).then((res) => res.data)
+const fetcher = (url: string) => API.get(url).then((res) => res.data);
 
-const isArray = (data: any): data is QueueToken[] => Array.isArray(data)
+// Corrected: Use 'unknown' instead of 'any' for the data parameter
+const isArray = (data: unknown): data is QueueToken[] => Array.isArray(data);
 
 export default function QueueManagement() {
-  const navigate = useNavigate()
-  const { setSelectedToken } = useQueueStore()
+  const navigate = useNavigate();
+  const { setSelectedToken } = useQueueStore();
 
-  const { data: waitingTokens, mutate: refreshWaiting } = useSWR('/queue?status=waiting', fetcher, {
-    refreshInterval: 5000,
-  })
+  // SWR hook for WAITING tokens
+  // Added isLoading alias: isLoadingWaiting
+  const { 
+    data: waitingTokensData, 
+    mutate: refreshWaiting, 
+    isLoading: isLoadingWaiting 
+  } = useSWR('/queue?status=waiting', fetcher, {
+    // refreshInterval: 5000, // Consider removing or reducing this due to Socket.IO
+  });
+  const waitingTokens: QueueToken[] = isArray(waitingTokensData) ? waitingTokensData : [];
 
-  const { data: completedTokens, mutate: refreshCompleted } = useSWR(
-    '/queue?status=completed',
-    fetcher
-  )
+  // SWR hook for COMPLETED tokens
+  // Added isLoading alias: isLoadingCompleted
+  const { 
+    data: completedTokensData, 
+    mutate: refreshCompleted, 
+    isLoading: isLoadingCompleted 
+  } = useSWR('/queue?status=completed', fetcher, {
+    // refreshInterval: 15000, // Consider removing or reducing
+  });
+  const completedTokens: QueueToken[] = isArray(completedTokensData) ? completedTokensData : [];
 
-  const [loadingId, setLoadingId] = useState<string | null>(null)
-
-  const handleComplete = async (id: string) => {
-    try {
-      setLoadingId(id)
-      await API.patch(`/queue/${id}/complete`)
-      refreshWaiting()
-      refreshCompleted()
-    } catch (error) {
-      console.error(error)
-      alert('Error completing token')
-    } finally {
-      setLoadingId(null)
-    }
-  }
-
-  const handleClearQueue = async () => {
-    const confirmClear = window.confirm('Are you sure you want to clear the entire queue?')
-    if (!confirmClear) return
-
-    try {
-      await API.delete('/queue/reset')
-      refreshWaiting()
-      refreshCompleted()
-      alert('✅ Queue successfully cleared')
-    } catch (error) {
-      console.error(error)
-      alert('❌ Failed to clear queue.')
-    }
-  }
-
-  const handleVerifyClick = (token: QueueToken) => {
-    setSelectedToken(token)
-    navigate('/officer/verify')
-  }
+  const [loadingId, setLoadingId] = useState<string | null>(null);
 
   useEffect(() => {
-    const socket = io(import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000')
+    const socket: Socket = io(import.meta.env.VITE_SOCKET_URL || 'http://localhost:5000');
+
+    socket.on('queue:new-entry', (newToken: QueueToken) => {
+      console.log('[QueueManagement] queue:new-entry received', newToken);
+      refreshWaiting((currentData: QueueToken[] | undefined) => {
+        const existingTokens = currentData || [];
+        if (existingTokens.find(token => token._id === newToken._id)) {
+          return existingTokens;
+        }
+        return [...existingTokens, newToken].sort((a,b) => a.tokenNumber - b.tokenNumber);
+      }, false);
+    });
+
+    socket.on('queue:token-completed', (completedToken: QueueToken) => {
+      console.log('[QueueManagement] queue:token-completed received', completedToken);
+      refreshWaiting((currentData: QueueToken[] | undefined) => {
+        return (currentData || []).filter(token => token._id !== completedToken._id);
+      }, false);
+      refreshCompleted((currentData: QueueToken[] | undefined) => {
+        const existingTokens = currentData || [];
+        if (existingTokens.find(token => token._id === completedToken._id)) {
+          return existingTokens;
+        }
+        return [completedToken, ...existingTokens];
+      }, false);
+    });
+    
+    socket.on('queue:cleared', () => {
+      console.log('[QueueManagement] queue:cleared received');
+      refreshWaiting([], false);
+      // refreshCompleted([], false); // Optionally clear completed too
+    });
+
     socket.on('queue:update', () => {
-      refreshWaiting()
-      refreshCompleted()
-    })
+      console.log('[QueueManagement] queue:update received. Revalidating lists.');
+      refreshWaiting();
+      refreshCompleted();
+    });
+
     return () => {
-      socket.disconnect()
+      console.log('[QueueManagement] Disconnecting socket');
+      socket.disconnect();
+    };
+  }, [refreshWaiting, refreshCompleted]);
+
+  const handleComplete = async (id: string) => {
+    setLoadingId(id);
+    try {
+      await API.patch(`/queue/${id}/complete`);
+      // UI update will be handled by 'queue:token-completed' socket event
+    } catch (error) {
+      console.error('Error completing token:', error);
+      alert('Error completing token');
+    } finally {
+      setLoadingId(null);
     }
-  }, [refreshWaiting, refreshCompleted])
+  };
+
+  const handleClearQueue = async () => {
+    const confirmClear = window.confirm('Are you sure you want to clear the entire queue?');
+    if (!confirmClear) return;
+
+    try {
+      await API.delete('/queue/reset'); // Should trigger 'queue:cleared'
+      alert('✅ Queue successfully cleared command sent.');
+      // UI update handled by 'queue:cleared' socket event
+    } catch (error) {
+      console.error('Failed to send clear queue command:', error);
+      alert('❌ Failed to send clear queue command.');
+    }
+  };
+
+  const handleVerifyClick = (token: QueueToken) => {
+    setSelectedToken(token);
+    navigate('/officer/verify');
+  };
 
   return (
     <div className="min-h-screen p-6 bg-white">
@@ -87,12 +135,13 @@ export default function QueueManagement() {
         </Button>
       </div>
 
-      {/* Waiting Tokens */}
+      {/* Waiting Voters Section */}
       <section className="mb-10">
         <h2 className="text-lg font-semibold text-gray-700 mb-4">⏳ Waiting Voters</h2>
-        {!isArray(waitingTokens) ? (
-          <p className="text-gray-500">Loading queue or failed to load.</p>
-        ) : waitingTokens.length === 0 ? (
+        {/* Corrected: Use isLoadingWaiting from the top-level SWR hook */}
+        {isLoadingWaiting && waitingTokens.length === 0 ? (
+          <p className="text-gray-500">Loading queue...</p>
+        ) : !isLoadingWaiting && waitingTokens.length === 0 ? (
           <p className="text-gray-500">No voters in queue.</p>
         ) : (
           <div className="space-y-4">
@@ -126,12 +175,13 @@ export default function QueueManagement() {
         )}
       </section>
 
-      {/* Completed Tokens */}
+      {/* Completed Tokens Section */}
       <section>
         <h2 className="text-lg font-semibold text-gray-700 mb-4">✅ Completed Voters</h2>
-        {!isArray(completedTokens) ? (
+        {/* Corrected: Use isLoadingCompleted from the top-level SWR hook */}
+        {isLoadingCompleted && completedTokens.length === 0 ? (
           <p className="text-gray-500">Loading completed tokens...</p>
-        ) : completedTokens.length === 0 ? (
+        ) : !isLoadingCompleted && completedTokens.length === 0 ? (
           <p className="text-gray-500">No completed tokens yet.</p>
         ) : (
           <div className="space-y-2 text-sm text-gray-600">
@@ -144,5 +194,5 @@ export default function QueueManagement() {
         )}
       </section>
     </div>
-  )
+  );
 }
