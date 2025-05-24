@@ -1,15 +1,15 @@
-import { useState, FormEvent } from 'react';
+// frontend/src/pages/OfficerLogin.tsx
+import { useState, FormEvent, useEffect } from 'react'; // Added useEffect
 import { useNavigate } from 'react-router-dom';
-import { Input } from '@/components/ui/Input'; // Ensure path is correct
-import { Button } from '@/components/ui/Button'; // Ensure path is correct
-import { useOfficerAuth } from '@/store/useOfficerAuth'; // Ensure path is correct
-import API from '@/lib/axios'; // Your pre-configured Axios instance
-import axios, { AxiosError } from 'axios'; // Import AxiosError and axios
+import { Input } from '@/components/ui/Input';
+import { Button } from '@/components/ui/Button';
+import { useOfficerAuth } from '@/store/useOfficerAuth';
+import API from '@/lib/axios';
+import axios, { AxiosError } from 'axios';
 
-// Define a type for the expected error response data from your backend
 interface ErrorResponseData {
   message: string;
-  // Add any other properties your error response might have
+  error?: string;
 }
 
 export default function OfficerLogin() {
@@ -18,53 +18,80 @@ export default function OfficerLogin() {
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
+  
+  // Get the login function and the whole store for logging
   const { login } = useOfficerAuth();
+  const officerAuthStore = useOfficerAuth(); // To access getState for logging
 
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
     setIsLoading(true);
+    console.log('[OfficerLogin] handleLogin started.');
 
     try {
+      const normalizedEmail = email.trim().toLowerCase();
+      const trimmedPassword = password.trim();
+
       const response = await API.post('/auth/officer/login', {
-        email,
-        password,
+        email: normalizedEmail,
+        password: trimmedPassword,
       });
+      console.log('[OfficerLogin] Backend login response successful:', response.data);
 
       const { token, user } = response.data;
 
       if (!token || !user || !user.id || !user.email) {
-        console.error('Login error: Token or essential user data missing in response', response.data);
+        console.error('[OfficerLogin] Login error: Token or essential user data missing in response', response.data);
         setError('Login failed: Invalid response from server. Please try again.');
         setIsLoading(false);
         return;
       }
+      
+      console.log('[OfficerLogin] Calling store.login() with token:', token ? token.substring(0,10)+'...' : null);
+      login(token, user); // Update Zustand store
 
-      localStorage.setItem('token', token); // << Added as requested
+      // ✅ Log the state from the store AND from localStorage immediately after calling login
+      // It might take a micro-task for persist to write to localStorage, so we check after a short delay
+      // However, the in-memory state from useOfficerAuth.getState() should be immediate.
+      console.log('[OfficerLogin] State immediately after login() call (in-memory):', useOfficerAuth.getState());
+      
+      // Check localStorage after a very short delay to give persist middleware a chance
+      setTimeout(() => {
+          console.log('[OfficerLogin] localStorage officer-auth-storage (after short delay):', localStorage.getItem('officer-auth-storage'));
+      }, 100); // 100ms delay, adjust if needed
 
-      login(token, user);
+      console.log('[OfficerLogin] Navigating to /officer/dashboard...');
       navigate('/officer/dashboard');
 
     } catch (err) {
-      console.error('Login page error:', err);
-      setIsLoading(false); // Ensure loading is stopped on error
-
+      console.error('[OfficerLogin] Login page API error:', err);
+      let errorMessage = 'Login failed. An unexpected error occurred. Please try again.';
       if (axios.isAxiosError(err)) {
-        const axiosError = err as AxiosError<ErrorResponseData>; // Type assertion with your custom error data type
-        if (axiosError.response && axiosError.response.data && axiosError.response.data.message) {
-          setError(axiosError.response.data.message); // Show backend error message
+        const axiosError = err as AxiosError<ErrorResponseData>;
+        if (axiosError.response) {
+          errorMessage = axiosError.response.data?.message || axiosError.response.data?.error || `Login failed: ${axiosError.response.statusText} (Status ${axiosError.response.status})`;
+          if (axiosError.response.status === 401) {
+            errorMessage = 'Invalid email or password.';
+          }
         } else if (axiosError.request) {
-          setError('Login failed: No response from server. Check network or if server is running.');
-        } else {
-          setError('Login failed: An unexpected error occurred while setting up the request.');
+          errorMessage = 'Login failed: No response from server. Check network or if server is running.';
         }
       } else if (err instanceof Error) {
-        setError(`Login failed: ${err.message}`);
-      } else {
-        setError('Login failed: An unknown error occurred. Please try again.');
+        errorMessage = `Login failed: ${err.message}`;
       }
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+      console.log('[OfficerLogin] handleLogin finished.');
     }
   };
+
+  // Log initial store state for reference
+  useEffect(() => {
+    console.log('[OfficerLogin] Initial component mount - officer auth state:', officerAuthStore);
+    console.log('[OfficerLogin] Initial component mount - localStorage officer-auth-storage:', localStorage.getItem('officer-auth-storage'));
+  }, [officerAuthStore]); // Added officerAuthStore to dependency array
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-white px-4">

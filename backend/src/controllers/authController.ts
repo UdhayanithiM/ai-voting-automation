@@ -1,17 +1,17 @@
 // backend/src/controllers/authController.ts
 
 import { Request, Response, NextFunction } from 'express';
-import bcrypt from 'bcryptjs';
-import jwt from 'jsonwebtoken';
+import jwt from 'jsonwebtoken'; // Used for voter OTP token, and potentially by generateToken
+import bcrypt from 'bcryptjs'; // Used by loginAdmin, keep for that
 import { Admin, AdminDocument } from '../models/Admin';
-import { Officer, OfficerDocument } from '../models/Officer';
-import { Voter, VoterDocument } from '../models/Voter';
-import { generateToken } from '../utils/tokenUtils';
-import { sendOtpToPhone, verifyOtp, clearOtp } from '../utils/otpUtils'; // Your existing import
-import ErrorResponse from '../utils/ErrorResponse';
-import asyncHandler from '../middleware/asyncHandler';
+import { Officer, OfficerDocument } from '../models/Officer'; // Corrected path if needed
+import { Voter, VoterDocument } from '../models/Voter';     // Corrected path if needed
+import { generateToken } from '../utils/tokenUtils';         // Ensure this path is correct
+import { sendOtpToPhone, verifyOtp, clearOtp } from '../utils/otpUtils'; // Ensure this path is correct
+import ErrorResponse from '../utils/ErrorResponse';       // Ensure this path is correct
+import asyncHandler from '../middleware/asyncHandler';   // Ensure this path is correct
 
-// --- Unified error logger ---
+// --- Unified error logger (from your provided code) ---
 const handleAuthError = (
     res: Response,
     error: unknown,
@@ -20,22 +20,24 @@ const handleAuthError = (
     next?: NextFunction
 ) => {
     const err = error as Error;
-    console.error(`[AuthC] Error in ${context}:`, err.message, err.stack);
+    // It's good practice to log the error stack for more detailed debugging
+    console.error(`[AuthC] Error in ${context}: ${err.message}`, err.stack);
 
-    if (next && error instanceof ErrorResponse) {
-        return next(error);
-    }
-    if (next && !(error instanceof ErrorResponse)) {
+    if (next) { // Prefer to always use the next middleware for error handling
+        if (error instanceof ErrorResponse) {
+            return next(error);
+        }
         return next(new ErrorResponse(`Failed during ${context}: ${err.message}`, statusCode));
     }
-    res.status(statusCode).json({
+    // Fallback if next is not provided (though with asyncHandler, next should always be available)
+    return res.status(statusCode).json({
         success: false,
         message: `Failed during ${context}`,
         error: err.message,
     });
 };
 
-// --- Admin Login ---
+// --- Admin Login (from your provided code) ---
 export const loginAdmin = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const { email, password } = req.body;
 
@@ -64,41 +66,57 @@ export const loginAdmin = asyncHandler(async (req: Request, res: Response, next:
     });
 });
 
-// --- Officer Login ---
+// --- Officer Login (Corrected and Refined) ---
 export const loginOfficer = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const { email, password } = req.body;
 
+    // 1. Basic input validation
     if (!email || !password) {
+        console.error('[AuthC] loginOfficer: Email or password was not provided in the request body.'); 
         return next(new ErrorResponse('Email and password are required', 400));
     }
 
-    const officer: OfficerDocument | null = await Officer.findOne({ email }).select('+password');
+    // 2. Normalize email (lowercase and trim)
+    const normalizedEmail = email.toLowerCase().trim();
+    
+    // 3. Find officer by normalized email and select password
+    // Note: The Officer model now stores emails in lowercase due to `lowercase: true` in schema.
+    const officer: OfficerDocument | null = await Officer.findOne({ email: normalizedEmail }).select('+password');
 
-    if (!officer || !officer.password) {
-        return next(new ErrorResponse('Invalid email or password (officer not found or password field missing)', 401));
+    // 4. Check if officer exists and has a password field (which should be guaranteed by .select('+password') if officer exists and password is set)
+    if (!officer || !officer.password) { 
+        // This is where your error at line 85 could be if officer not found or password somehow not selected/present.
+        // Logging the specific email helps confirm if it's a "not found" issue.
+        console.warn(`[AuthC] loginOfficer: Officer not found or password missing for normalized email: "${normalizedEmail}"`);
+        return next(new ErrorResponse('Invalid credentials', 401));
     }
 
-    const isMatch = await (officer as any).comparePassword(password);
+    // 5. Compare password using the model's method
+    const isMatch = await officer.comparePassword(password); 
 
     if (!isMatch) {
-        return next(new ErrorResponse('Invalid email or password (password mismatch)', 401));
+        // This is where your error at line 85 could be if passwords don't match.
+        console.warn(`[AuthC] loginOfficer: Password mismatch for officer: "${officer.email}"`);
+        return next(new ErrorResponse('Invalid credentials', 401));
     }
 
-    const token = generateToken(officer._id.toString());
+    // 6. Generate token using your utility (ensure tokenUtils.ts uses JWT_SECRET from .env)
+    const token = generateToken(officer._id.toString()); 
 
+    console.log(`[AuthC] loginOfficer: Login successful for officer: "${officer.email}"`);
     res.status(200).json({
         success: true,
         token,
         user: {
             id: officer._id.toString(),
             name: officer.name,
-            email: officer.email,
+            email: officer.email, // This will be the lowercase email from the DB
             role: 'officer',
         },
     });
 });
 
-// --- MODIFIED Step 1: Voter Identification & OTP Request (Context Aware) ---
+// --- Voter OTP Request (from your provided code) ---
 export const initiateVoterOtpById = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const { identifierType, identifierValue } = req.body;
 
@@ -107,7 +125,6 @@ export const initiateVoterOtpById = asyncHandler(async (req: Request, res: Respo
     }
 
     let voterQuery: any = {};
-    let voterIdentifierForLog = `${identifierType}: ${identifierValue}`;
 
     if (identifierType === 'AADHAAR') {
         if (!/^\d{12}$/.test(identifierValue)) {
@@ -115,9 +132,7 @@ export const initiateVoterOtpById = asyncHandler(async (req: Request, res: Respo
         }
         voterQuery = { aadharNumber: identifierValue };
     } else if (identifierType === 'VOTER_ID') {
-        if (!/^[A-Z0-9]{6,15}$/.test(identifierValue.toUpperCase())) {
-            return next(new ErrorResponse('Invalid Voter ID format.', 400));
-        }
+        // Consider normalizing voterIdNumber (e.g., toUpperCase) before saving if you do it here before querying
         voterQuery = { voterIdNumber: identifierValue.toUpperCase() };
     } else if (identifierType === 'REGISTER_NUMBER') {
         voterQuery = { registerNumber: identifierValue };
@@ -128,8 +143,9 @@ export const initiateVoterOtpById = asyncHandler(async (req: Request, res: Respo
     const voter: VoterDocument | null = await Voter.findOne(voterQuery);
 
     if (!voter) {
-        console.log(`[AuthC] Voter not found for ${voterIdentifierForLog}`);
-        return next(new ErrorResponse(`Voter not found with the provided ${identifierType}. Please check your details or register.`, 404));
+        // It's good to log the identifier for which the voter was not found
+        console.warn(`[AuthC] initiateVoterOtpById: Voter not found for ${identifierType}: "${identifierValue}"`);
+        return next(new ErrorResponse('Voter not found.', 404));
     }
 
     if (voter.hasVoted) {
@@ -137,28 +153,28 @@ export const initiateVoterOtpById = asyncHandler(async (req: Request, res: Respo
     }
 
     if (!voter.phoneNumber) {
-        console.error(`[AuthC] Missing phone number for voter ID: ${voter._id} (Identified by ${voterIdentifierForLog})`);
-        return next(new ErrorResponse('No registered phone number found for this voter. Cannot send OTP.', 500));
+        console.error(`[AuthC] initiateVoterOtpById: Phone number missing for voter ID: ${voter._id}`);
+        return next(new ErrorResponse('Phone number missing for this voter.', 500));
     }
 
     try {
-        // ✅ CORRECTED: Call sendOtpToPhone as defined in your otpUtils.ts (expects 1 argument)
-        await sendOtpToPhone(voter.phoneNumber); 
-        // const otpResult = await sendOtpToPhone(voter.phoneNumber, voter._id.toString()); // OLD Line 164
-
-        console.log(`[AuthC] OTP process initiated for ${voterIdentifierForLog} (Voter ID: ${voter._id}) to phone ${voter.phoneNumber}`);
+        await sendOtpToPhone(voter.phoneNumber); // Assuming sendOtpToPhone is robust and handles its own errors or throws them
+        console.log(`[AuthC] initiateVoterOtpById: OTP sent to voter ${voter._id} phone hint ${voter.phoneNumber.slice(-4)}`);
         res.status(200).json({
             success: true,
             message: 'OTP has been sent to your registered mobile number.',
             phoneHint: voter.phoneNumber.slice(-4),
         });
-    } catch (otpError: any) {
-        console.error(`[AuthC] Error sending OTP for ${voterIdentifierForLog}:`, otpError);
-        return next(new ErrorResponse(otpError.message || 'Failed to send OTP. Please try again.', 500));
+    } catch (otpError) {
+        console.error('[AuthC] initiateVoterOtpById: Error sending OTP:', otpError);
+        // Ensure ErrorResponse is used for consistency if otpError is not already one
+        if (otpError instanceof ErrorResponse) return next(otpError);
+        if (otpError instanceof Error) return next(new ErrorResponse(otpError.message, 500));
+        return next(new ErrorResponse('Failed to send OTP', 500));
     }
 });
 
-// --- MODIFIED Step 2: Verify OTP & Generate Voter Session Token (Context Aware) ---
+// --- Voter OTP Verification (from your provided code) ---
 export const verifyVoterIdOtp = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
     const { identifierType, identifierValue, otp } = req.body;
 
@@ -180,10 +196,12 @@ export const verifyVoterIdOtp = asyncHandler(async (req: Request, res: Response,
     const voter: VoterDocument | null = await Voter.findOne(voterQuery);
 
     if (!voter) {
-        return next(new ErrorResponse('Voter not found for the provided details. Cannot verify OTP.', 404));
+        console.warn(`[AuthC] verifyVoterIdOtp: Voter not found for ${identifierType}: "${identifierValue}"`);
+        return next(new ErrorResponse('Voter not found.', 404));
     }
 
-    if (!voter.phoneNumber) {
+    if (!voter.phoneNumber) { // Should ideally not happen if OTP was sent
+        console.error(`[AuthC] verifyVoterIdOtp: Phone number missing for voter ID: ${voter._id}`);
         return next(new ErrorResponse('Phone number missing for this voter.', 500));
     }
 
@@ -191,32 +209,39 @@ export const verifyVoterIdOtp = asyncHandler(async (req: Request, res: Response,
         return next(new ErrorResponse('This voter has already voted.', 403));
     }
 
-    // ✅ CORRECTED: Call verifyOtp as defined in your otpUtils.ts (expects 2 arguments)
-    const isValidOtp = await verifyOtp(voter.phoneNumber, otp);
-    // const isValidOtp = await verifyOtp(voter.phoneNumber, otp, voter._id.toString()); // OLD Line 219
+    try {
+        const isValidOtp = await verifyOtp(voter.phoneNumber, otp); // Assuming verifyOtp is robust
 
-    if (!isValidOtp) {
-        return next(new ErrorResponse('Invalid or expired OTP.', 401));
+        if (!isValidOtp) {
+            console.warn(`[AuthC] verifyVoterIdOtp: Invalid OTP for voter ${voter._id} phone ${voter.phoneNumber}`);
+            return next(new ErrorResponse('Invalid or expired OTP.', 401));
+        }
+
+        await clearOtp(voter.phoneNumber); // Assuming clearOtp is robust
+
+        const otpTokenPayload = { id: voter._id.toString(), purpose: 'OTP_VERIFIED_FOR_VOTER_FLOW', role: 'voter' }; // Added role
+        const voterJwtSecret = process.env.JWT_SECRET_VOTER || 'yourDefaultStrongVoterSecret!IfEnvMissing123';
+        if (voterJwtSecret === 'yourDefaultStrongVoterSecret!IfEnvMissing123') {
+            console.warn('[AuthC] verifyVoterIdOtp: Using default JWT_SECRET_VOTER. This is insecure for production.');
+        }
+        const otpToken = jwt.sign(otpTokenPayload, voterJwtSecret, { expiresIn: '10m' });
+
+        console.log(`[AuthC] verifyVoterIdOtp: OTP verified for voter ${voter._id}. Token generated.`);
+        res.status(200).json({
+            success: true,
+            message: 'OTP verified. Proceed to face verification.',
+            token: otpToken,
+            voter: { // Send necessary, non-sensitive voter info
+                id: voter._id.toString(),
+                // Consider if phone and fullName are needed by frontend at this stage
+                // phone: voter.phoneNumber, 
+                // fullName: voter.fullName,
+            },
+        });
+    } catch (error) {
+        console.error('[AuthC] verifyVoterIdOtp: Error during OTP verification process:', error);
+        if (error instanceof ErrorResponse) return next(error);
+        if (error instanceof Error) return next(new ErrorResponse(error.message, 500));
+        return next(new ErrorResponse('OTP verification failed', 500));
     }
-
-    // ✅ CORRECTED: Call clearOtp as defined in your otpUtils.ts (expects 1 argument)
-    await clearOtp(voter.phoneNumber); 
-    // await clearOtp(voter.phoneNumber, voter._id.toString()); // OLD Line 226
-
-    const otpToken = jwt.sign(
-        { id: voter._id.toString(), purpose: 'OTP_VERIFIED_FOR_VOTER_FLOW' },
-        process.env.JWT_SECRET_VOTER || 'yourDefaultStrongVoterSecret!IfEnvMissing123',
-        { expiresIn: '10m' }
-    );
-
-    res.status(200).json({
-        success: true,
-        message: 'OTP verified. Proceed to face verification.',
-        token: otpToken,
-        voter: {
-            id: voter._id.toString(),
-            phone: voter.phoneNumber,
-            fullName: voter.fullName,
-        },
-    });
 });

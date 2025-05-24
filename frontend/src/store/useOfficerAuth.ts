@@ -1,8 +1,8 @@
 // frontend/src/store/useOfficerAuth.ts
-import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
+import { create, StateCreator } from 'zustand';
+import { persist, createJSONStorage, StateStorage, PersistOptions, StorageValue } from 'zustand/middleware';
 
-// Define the structure of officer data returned from backend
+// --- Type Definitions ---
 interface OfficerData {
   id: string;
   email: string;
@@ -10,55 +10,99 @@ interface OfficerData {
   role?: string;
 }
 
-interface OfficerAuthState {
-  isAuthenticated: boolean;
+// This is the state that will be persisted to localStorage
+interface PersistedOfficerState {
   token: string | null;
   officer: OfficerData | null;
-  login: (token: string, officerData: OfficerData) => void;
-  logout: () => void;
 }
 
-export const useOfficerAuth = create<OfficerAuthState>()(
-  persist(
-    (set) => ({
-      isAuthenticated: false,
+// This is the full runtime state of the store
+// We add isAuthenticated as a derived value in selectors/hooks
+export interface FullOfficerAuthState extends PersistedOfficerState {
+  _hasHydrated: boolean;   // Tracks if rehydration from storage is complete
+  login: (token: string, officerData: OfficerData) => void;
+  logout: () => void;
+  // No explicit setHydrated action needed here for this approach
+}
+
+// --- Store Creator Function ---
+// Removed 'get' from params as it's not used if not debugging inside actions
+const officerAuthStoreLogic: StateCreator<FullOfficerAuthState, [], [], FullOfficerAuthState> = (set) => ({
+  token: null,
+  officer: null,
+  _hasHydrated: false,   // Initial value, will be set to true by persist when done
+
+  login: (token, officerData) => {
+    // console.log('[useOfficerAuth] LOGIN action called.');
+    set({
+      token,
+      officer: officerData,
+      // isAuthenticated is effectively true now because token is set
+    });
+  },
+
+  logout: () => {
+    // console.log('[useOfficerAuth] LOGOUT action called.');
+    set({
       token: null,
       officer: null,
-      login: (token, officerData) => {
-        set({
-          isAuthenticated: true,
-          token,
-          officer: officerData,
-        });
-      },
-      logout: () => {
-        localStorage.removeItem('token'); // << ADD
-        set({
-          isAuthenticated: false,
-          token: null,
-          officer: null,
-        });
-      },
-    }),
-    {
-      name: 'officer-auth-storage',
-      storage: createJSONStorage(() => localStorage),
+      // isAuthenticated is effectively false now
+    });
+  },
+});
 
-      // Update `isAuthenticated` after rehydration if token exists
-      onRehydrateStorage: (persistedState) => {
-        if (persistedState?.token) {
-          return (rehydratedState, error): void => {
-            if (error) {
-              console.error('Error rehydrating officer auth state:', error);
-              return;
-            }
-            if (rehydratedState) {
-              rehydratedState.isAuthenticated = !!rehydratedState.token;
-            }
-          };
-        }
-        return undefined;
-      },
-    }
-  )
+// --- Persist Middleware Configuration ---
+const officerPersistOptions: PersistOptions<FullOfficerAuthState, PersistedOfficerState> = {
+  name: 'officer-auth-storage', 
+  storage: createJSONStorage(() => localStorage), 
+  
+  partialize: (state) => ({
+    token: state.token,
+    officer: state.officer,
+  }),
+
+  // This function is called AFTER the store has been rehydrated.
+  // The `state` parameter here is the full store state *after* rehydration.
+  // We use it to set our _hasHydrated flag.
+  onRehydrateStorage: () => {
+    console.log('[useOfficerAuth] onRehydrateStorage: Initializing persist middleware.');
+    return (state, error) => {
+      if (error) {
+        console.error('[useOfficerAuth] onRehydrateStorage callback: Error during rehydration by middleware:', error);
+        // Even on error, we consider hydration attempt "finished"
+        if (state) state._hasHydrated = true; 
+      } else {
+        // If rehydratedState is null/undefined, it means nothing was in storage.
+        // If it has data, the persist middleware has already merged it into the store.
+        // console.log('[useOfficerAuth] onRehydrateStorage callback: Rehydration successful or nothing in storage.');
+        if (state) state._hasHydrated = true;
+      }
+      // console.log('[useOfficerAuth] onRehydrateStorage callback: _hasHydrated should be true now if state existed.');
+    };
+  },
+  // version: 0, 
+};
+
+// --- Create the Store ---
+export const useOfficerAuth = create<FullOfficerAuthState>()(
+  persist(officerAuthStoreLogic, officerPersistOptions)
 );
+
+// --- Selector Hooks ---
+export const useOfficerAuthHasHydrated = () => useOfficerAuth((state) => state._hasHydrated);
+
+export const useOfficerAuthStatus = () => {
+  const { token, _hasHydrated, officer } = useOfficerAuth(
+    (state) => ({ 
+      token: state.token, 
+      _hasHydrated: state._hasHydrated,
+      officer: state.officer,
+    })
+  );
+  return { 
+    isAuthenticated: !!token, // Derive isAuthenticated here
+    hasHydrated: _hasHydrated, 
+    token,
+    officer 
+  };
+};
