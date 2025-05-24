@@ -1,9 +1,9 @@
 // frontend/src/pages/OfficerLogin.tsx
-import { useState, FormEvent, useEffect } from 'react'; // Added useEffect
-import { useNavigate } from 'react-router-dom';
+import React, { useState, FormEvent, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom'; // useLocation removed as it was unused
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
-import { useOfficerAuth } from '@/store/useOfficerAuth';
+import { useOfficerAuth } from '@/store/useOfficerAuth'; // useOfficerAuthStatus removed as it was unused here
 import API from '@/lib/axios';
 import axios, { AxiosError } from 'axios';
 
@@ -17,11 +17,16 @@ export default function OfficerLogin() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const navigate = useNavigate();
   
-  // Get the login function and the whole store for logging
-  const { login } = useOfficerAuth();
-  const officerAuthStore = useOfficerAuth(); // To access getState for logging
+  const navigate = useNavigate();
+  const { login } = useOfficerAuth(); // Get the login action from the store
+
+  useEffect(() => {
+    // Log initial store state for reference when component mounts
+    const initialStoreState = useOfficerAuth.getState();
+    console.log(`[OfficerLogin] Initial component mount - Store State: Token: ${initialStoreState.token ? 'PRESENT' : 'NULL'}, HasHydrated: ${initialStoreState._hasHydrated}`);
+    console.log('[OfficerLogin] Initial component mount - localStorage officer-auth-storage:', localStorage.getItem('officer-auth-storage'));
+  }, []); // Empty dependency array, runs once on mount
 
   const handleLogin = async (e: FormEvent) => {
     e.preventDefault();
@@ -43,30 +48,28 @@ export default function OfficerLogin() {
 
       if (!token || !user || !user.id || !user.email) {
         console.error('[OfficerLogin] Login error: Token or essential user data missing in response', response.data);
-        setError('Login failed: Invalid response from server. Please try again.');
+        setError('Login failed: Invalid response from server.');
         setIsLoading(false);
         return;
       }
       
-      console.log('[OfficerLogin] Calling store.login() with token:', token ? token.substring(0,10)+'...' : null);
-      login(token, user); // Update Zustand store
+      console.log('[OfficerLogin] Calling store.login() with received token.');
+      login(token, user); // Dispatch login action to update Zustand store
 
-      // ✅ Log the state from the store AND from localStorage immediately after calling login
-      // It might take a micro-task for persist to write to localStorage, so we check after a short delay
-      // However, the in-memory state from useOfficerAuth.getState() should be immediate.
-      console.log('[OfficerLogin] State immediately after login() call (in-memory):', useOfficerAuth.getState());
+      const stateAfterLoginCall = useOfficerAuth.getState();
+      console.log(`[OfficerLogin] State from useOfficerAuth.getState() immediately after login() call: Token: ${stateAfterLoginCall.token ? 'PRESENT' : 'NULL'}, HasHydrated: ${stateAfterLoginCall._hasHydrated}`);
       
-      // Check localStorage after a very short delay to give persist middleware a chance
-      setTimeout(() => {
-          console.log('[OfficerLogin] localStorage officer-auth-storage (after short delay):', localStorage.getItem('officer-auth-storage'));
-      }, 100); // 100ms delay, adjust if needed
-
-      console.log('[OfficerLogin] Navigating to /officer/dashboard...');
-      navigate('/officer/dashboard');
+      if (stateAfterLoginCall.token) {
+        console.log('[OfficerLogin] Token IS SET in store (verified by getState()). Navigating to /officer/dashboard...');
+        navigate('/officer/dashboard', { replace: true });
+      } else {
+        console.error('[OfficerLogin] CRITICAL ERROR: Token is NULL in store (verified by getState()) even after login() call. Navigation aborted.');
+        setError('Login succeeded but local state update failed. Please try again.');
+      }
 
     } catch (err) {
       console.error('[OfficerLogin] Login page API error:', err);
-      let errorMessage = 'Login failed. An unexpected error occurred. Please try again.';
+      let errorMessage = 'Login failed. An unexpected error occurred.';
       if (axios.isAxiosError(err)) {
         const axiosError = err as AxiosError<ErrorResponseData>;
         if (axiosError.response) {
@@ -75,7 +78,7 @@ export default function OfficerLogin() {
             errorMessage = 'Invalid email or password.';
           }
         } else if (axiosError.request) {
-          errorMessage = 'Login failed: No response from server. Check network or if server is running.';
+          errorMessage = 'Login failed: No response from server. Check network.';
         }
       } else if (err instanceof Error) {
         errorMessage = `Login failed: ${err.message}`;
@@ -86,12 +89,6 @@ export default function OfficerLogin() {
       console.log('[OfficerLogin] handleLogin finished.');
     }
   };
-
-  // Log initial store state for reference
-  useEffect(() => {
-    console.log('[OfficerLogin] Initial component mount - officer auth state:', officerAuthStore);
-    console.log('[OfficerLogin] Initial component mount - localStorage officer-auth-storage:', localStorage.getItem('officer-auth-storage'));
-  }, [officerAuthStore]); // Added officerAuthStore to dependency array
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-white px-4">
