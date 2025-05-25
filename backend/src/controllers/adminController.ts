@@ -1,101 +1,89 @@
 // backend/src/controllers/adminController.ts
-import { Request, Response, NextFunction } from 'express'; // Added NextFunction
-import bcrypt from 'bcryptjs'; // Keep for other uses if any, or remove if only model hashes
-import { Officer } from '../models/Officer'; // Ensure path is correct
-import { Voter } from '../models/Voter';   // Ensure path is correct
-import { Vote } from '../models/Vote';     // Ensure path is correct
-import { VoterDocument, CandidateDocument } from '../types'; // Ensure path is correct
+import { Request, Response, NextFunction } from 'express';
+// import bcrypt from 'bcryptjs'; // Not used in this snippet
+import { Officer } from '../models/Officer';
+import { Voter, VoterDocument } from '../models/Voter';   // CRITICAL: Ensure VoterDocument here defines all fields you use.
+import { Vote } from '../models/Vote';     
+import { CandidateDocument } from '../types'; // Ensure this type from '../types' is correct
 import mongoose from 'mongoose';
-import ErrorResponse from '../utils/ErrorResponse';     // Import ErrorResponse
-import asyncHandler from '../middleware/asyncHandler'; // Import asyncHandler
-
-// Utility function for error handling (if not using asyncHandler consistently)
-const handleErrorOLD = (res: Response, error: unknown, context: string) => {
-  const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-  console.error(`Error in ${context}:`, error); // Log the full error
-  res.status(500).json({ 
-    message: `Failed to ${context}`,
-    error: errorMessage 
-  });
-};
+import ErrorResponse from '../utils/ErrorResponse';     
+import asyncHandler from '../middleware/asyncHandler'; 
 
 // GET /api/admin/voters - Fetch all voters
-export const getAllVoters = asyncHandler(async (req: Request, res: Response) => { // Used asyncHandler
+export const getAllVoters = asyncHandler(async (req: Request, res: Response) => {
   const voters = await Voter.find()
     .sort({ createdAt: -1 })
-    .select('-password'); // Good to exclude password
+    .select('-password'); 
   res.status(200).json(voters);
 });
 
-// POST /api/admin/officers - Create a new officer (CORRECTED)
-export const createOfficer = asyncHandler(async (req: Request, res: Response, next: NextFunction) => { // Used asyncHandler
+// POST /api/admin/officers - Create a new officer
+export const createOfficer = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { name, email, password } = req.body;
 
   if (!name || !email || !password) {
-    // Use ErrorResponse for consistent error handling via your middleware
     return next(new ErrorResponse('All fields (name, email, password) are required', 400));
   }
-
-  // Email will be lowercased by the model's schema option `lowercase: true`
-  const existingOfficer = await Officer.findOne({ email }); 
+  const normalizedEmail = email.toLowerCase();
+  const existingOfficer = await Officer.findOne({ email: normalizedEmail }); 
   if (existingOfficer) {
-    return next(new ErrorResponse('Officer with this email already exists', 409)); // 409 Conflict is more appropriate
+    return next(new ErrorResponse('Officer with this email already exists', 409));
   }
 
-  // ✅ Pass the PLAIN password here. The Officer model's pre('save') hook will hash it.
-  const officer = await Officer.create({
-    name,
-    email,    // Model schema should handle lowercasing and trimming
-    password, // Send the plain password directly from the request
-  });
-
-  // Officer.create will throw an error if validation fails or save fails, caught by asyncHandler
+  const officer = await Officer.create({ name, email, password }); // Password hashing is in Officer model pre-save hook
 
   res.status(201).json({
     message: 'Officer created successfully',
-    officer: { // Send back non-sensitive officer info
+    officer: { 
       id: officer._id,
       name: officer.name,
-      email: officer.email, // This will be the lowercased email from DB
+      email: officer.email, 
       createdAt: officer.createdAt
     },
   });
 });
 
 // GET /api/admin/stats - Get admin dashboard statistics
-export const getAdminStats = asyncHandler(async (_req: Request, res: Response) => { // Used asyncHandler
-  const [totalVoters, totalOfficers, totalVotes, pendingVoters] = await Promise.all([
-    Voter.countDocuments(),
-    Officer.countDocuments(),
-    Vote.countDocuments(),
-    Voter.countDocuments({ approved: false, flagged: { $ne: true } }) // More precise pending
-  ]);
+export const getAdminStats = asyncHandler(async (_req: Request, res: Response, next: NextFunction) => { // Added next
+  try {
+    const [totalVoters, totalOfficers, totalVotes, pendingVoters] = await Promise.all([
+      Voter.countDocuments(),
+      Officer.countDocuments(),
+      Vote.countDocuments(),
+      // Ensure 'approved' and 'flagged' fields exist in your Voter schema for this query
+      Voter.countDocuments({ approved: false, flagged: { $ne: true } }) 
+    ]);
 
-  res.status(200).json({ 
-    totalVoters, 
-    totalOfficers, 
-    totalVotes,
-    pendingApprovals: pendingVoters
-  });
+    res.status(200).json({ 
+      totalVoters, 
+      totalOfficers, 
+      totalVotes,
+      pendingApprovals: pendingVoters
+    });
+  } catch (error) {
+    // Forward error to global error handler
+    return next(new ErrorResponse('Failed to retrieve admin statistics', 500));
+  }
 });
 
-// POST /api/voters/:id/approve - Approve a voter
-export const approveVoter = asyncHandler(async (req: Request, res: Response, next: NextFunction) => { // Used asyncHandler
+// POST /api/admin/voters/:id/approve - Approve a voter
+export const approveVoter = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { id } = req.params;
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return next(new ErrorResponse('Invalid voter ID format', 400));
   }
 
+  // Ensure VoterDocument type includes 'approved', 'status', 'flagged'
   const voter = await Voter.findByIdAndUpdate(
     id,
     { 
-      approved: true,
-      status: 'Verified', // Consistent status
-      flagged: false 
+      approved: true,   // Fix: VoterDocument must define 'approved'
+      status: 'Verified', // Fix: VoterDocument must define 'status'
+      flagged: false      // Fix: VoterDocument must define 'flagged'
     },
-    { new: true, runValidators: true } // Return updated doc, run validators
-  ).select('-password');
+    { new: true, runValidators: true } 
+  ).select('-password') as VoterDocument | null; // Explicit cast after select
 
   if (!voter) {
     return next(new ErrorResponse('Voter not found', 404));
@@ -103,34 +91,36 @@ export const approveVoter = asyncHandler(async (req: Request, res: Response, nex
 
   res.status(200).json({ 
     message: 'Voter approved successfully', 
-    voter: { // Send back relevant, non-sensitive info
+    voter: { 
       id: voter._id,
       fullName: voter.fullName,
-      status: voter.status,
-      approved: voter.approved
+      // The following will cause TS errors if not in VoterDocument
+      status: voter.status,     // Fix: VoterDocument must define 'status'
+      approved: voter.approved  // Fix: VoterDocument must define 'approved'
     }
   });
 });
 
-// POST /api/voters/:id/flag - Flag a voter
-export const flagVoter = asyncHandler(async (req: Request, res: Response, next: NextFunction) => { // Used asyncHandler
+// POST /api/admin/voters/:id/flag - Flag a voter
+export const flagVoter = asyncHandler(async (req: Request, res: Response, next: NextFunction) => {
   const { id } = req.params;
-  const { reason } = req.body;
+  const { reason } = req.body; // Ensure 'reason' is expected and handled if required
 
   if (!mongoose.Types.ObjectId.isValid(id)) {
     return next(new ErrorResponse('Invalid voter ID format', 400));
   }
 
+  // Ensure VoterDocument type includes 'flagged', 'status', 'flagReason', 'approved'
   const voter = await Voter.findByIdAndUpdate(
     id,
     { 
-      flagged: true,
-      status: 'Flagged', // Consistent status
-      flagReason: reason || 'No reason provided',
-      approved: false 
+      flagged: true,         // Fix: VoterDocument must define 'flagged'
+      status: 'Flagged',     // Fix: VoterDocument must define 'status'
+      flagReason: reason || 'No reason provided', // Fix: VoterDocument must define 'flagReason'
+      approved: false        // Fix: VoterDocument must define 'approved'
     },
     { new: true, runValidators: true }
-  ).select('-password');
+  ).select('-password') as VoterDocument | null; // Explicit cast
 
   if (!voter) {
     return next(new ErrorResponse('Voter not found', 404));
@@ -138,32 +128,52 @@ export const flagVoter = asyncHandler(async (req: Request, res: Response, next: 
 
   res.status(200).json({ 
     message: 'Voter flagged successfully', 
-    voter: { // Send back relevant, non-sensitive info
+    voter: { 
       id: voter._id,
       fullName: voter.fullName,
-      status: voter.status,
-      flagged: voter.flagged,
-      flagReason: voter.flagReason
+      // The following will cause TS errors if not in VoterDocument
+      status: voter.status,       // Fix: VoterDocument must define 'status'
+      flagged: voter.flagged,     // Fix: VoterDocument must define 'flagged'
+      flagReason: voter.flagReason// Fix: VoterDocument must define 'flagReason' (make it optional in type if it can be undefined)
     }
   });
 });
 
 // GET /api/admin/votes - Get voting logs
-export const getVoteLogs = asyncHandler(async (req: Request, res: Response) => { // Used asyncHandler
-  const votes = await Vote.find()
-    .sort({ createdAt: -1 })
-    .populate<{ voter: VoterDocument }>('voter', 'voterIdNumber fullName') // Select specific fields
-    .populate<{ candidate: CandidateDocument }>('candidate', 'name position') // Select specific fields
-    .lean(); // .lean() for better performance if not modifying docs
+export const getVoteLogs = asyncHandler(async (req: Request, res: Response, next: NextFunction) => { // Added next
+ try {
+    // Define a more specific type for the populated voter within the vote context
+    interface PopulatedVoteVoter extends Pick<VoterDocument, '_id' | 'fullName'> {
+        voterIdNumber?: string; // Add this if it's indeed part of your VoterDocument and selected
+    }
+    interface PopulatedVoteCandidate extends Pick<CandidateDocument, '_id' | 'name' | 'position'> {}
 
-  const formattedVotes = votes.map(vote => ({
-    id: vote._id,
-    voterId: vote.voter?.voterIdNumber || 'N/A', // Use a consistent field like voterIdNumber
-    voterName: vote.voter?.fullName || 'Unknown Voter',
-    candidateName: vote.candidate?.name || 'Unknown Candidate',
-    candidatePosition: vote.candidate?.position || 'N/A',
-    timestamp: vote.createdAt
-  }));
+    interface PopulatedVote extends Document { // Assuming Vote itself is a Mongoose Document
+        _id: mongoose.Types.ObjectId;
+        voter: PopulatedVoteVoter | null; // Voter can be null if population fails or ID is invalid
+        candidate: PopulatedVoteCandidate | null;
+        createdAt: Date;
+        updatedAt: Date;
+    }
 
-  res.status(200).json(formattedVotes);
+    const votes = await Vote.find()
+        .sort({ createdAt: -1 })
+        // Correct population: Ensure 'voterIdNumber' and 'fullName' are in Voter schema and selected
+        .populate<{ voter: PopulatedVoteVoter }>('voter', 'fullName voterIdNumber') 
+        .populate<{ candidate: PopulatedVoteCandidate }>('candidate', 'name position')
+        .lean<PopulatedVote[]>(); // Use lean with the specific type
+
+    const formattedVotes = votes.map(vote => ({
+        id: vote._id.toString(),
+        voterId: vote.voter?.voterIdNumber || 'N/A', // Fix: Access 'voterIdNumber' from PopulatedVoteVoter
+        voterName: vote.voter?.fullName || 'Unknown Voter',
+        candidateName: vote.candidate?.name || 'Unknown Candidate',
+        candidatePosition: vote.candidate?.position || 'N/A',
+        timestamp: vote.createdAt
+    }));
+
+    res.status(200).json(formattedVotes);
+  } catch (error) {
+    return next(new ErrorResponse('Failed to retrieve vote logs', 500));
+  }
 });
