@@ -1,14 +1,17 @@
 // frontend/src/pages/officer/ProtectedOfficerRoute.tsx
-import React, { useEffect } from 'react'; // React import handles JSX for modern TS/React setups
+import React, { useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
-import { useOfficerAuthStatus, useOfficerAuth } from '@/store/useOfficerAuth';
+// Import the new granular hooks and the base store hook
+import { useIsOfficerAuthenticated, useOfficerHasHydrated, useOfficerToken, useOfficerAuth } from '@/store/useOfficerAuth';
 
 interface ProtectedOfficerRouteProps {
-  children: React.ReactNode; // Use React.ReactNode for children prop type
+  children: React.ReactNode;
 }
 
 const ProtectedOfficerRoute: React.FC<ProtectedOfficerRouteProps> = ({ children }) => {
-  const { isAuthenticated, hasHydrated, token: tokenFromHook } = useOfficerAuthStatus(); 
+  const isAuthenticated = useIsOfficerAuthenticated();
+  const hasHydrated = useOfficerHasHydrated();
+  const tokenFromHook = useOfficerToken(); // For logging consistency if needed
   const location = useLocation();
 
   useEffect(() => {
@@ -20,7 +23,7 @@ const ProtectedOfficerRoute: React.FC<ProtectedOfficerRouteProps> = ({ children 
     );
   }, [location.pathname, isAuthenticated, hasHydrated, tokenFromHook]);
 
-  const directStoreStateOnRender = useOfficerAuth.getState();
+  const directStoreStateOnRender = useOfficerAuth.getState(); // For logging current direct state
   console.log(
     `[ProtectedOfficerRoute] Rendering. Path: ${location.pathname}. ` +
     `Hook_IsAuth: ${isAuthenticated}, Hook_HasHydrated: ${hasHydrated}, Hook_Token: ${tokenFromHook ? 'PRESENT' : 'NULL'}. ` +
@@ -28,15 +31,16 @@ const ProtectedOfficerRoute: React.FC<ProtectedOfficerRouteProps> = ({ children 
   );
 
   if (!hasHydrated) {
-     console.log('[ProtectedOfficerRoute] Store not hydrated yet (hasHydrated from hook is false). Displaying loading indicator.');
-     return <div className="flex justify-center items-center min-h-screen">Loading Authentication... (Protected Route)</div>;
+      console.log('[ProtectedOfficerRoute] Store not hydrated yet (hasHydrated from hook is false). Displaying loading indicator.');
+      // You might want a more sophisticated loading spinner/component here
+      return <div className="flex justify-center items-center min-h-screen">Loading Authentication...</div>;
   }
 
   if (isAuthenticated) {
-    console.log('[ProtectedOfficerRoute] Authenticated (isAuthenticated from hook is true). Rendering children for path:', location.pathname);
-    return <>{children}</>; // Render children directly
+    console.log('[ProtectedOfficerRoute] Authenticated. Rendering children for path:', location.pathname);
+    return <>{children}</>;
   } else {
-    console.log(`[ProtectedOfficerRoute] NOT Authenticated (isAuthenticated from hook is false, while hasHydrated is true). Token from hook was ${tokenFromHook ? 'PRESENT' : 'NULL'}. Redirecting to /officer/login from path: ${location.pathname}`);
+    console.log(`[ProtectedOfficerRoute] NOT Authenticated (isAuthenticated is false, hasHydrated is true). Redirecting to /officer/login from path: ${location.pathname}`);
     return <Navigate to="/officer/login" replace state={{ from: location }} />;
   }
 };

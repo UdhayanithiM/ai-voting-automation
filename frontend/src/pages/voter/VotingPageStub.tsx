@@ -4,15 +4,16 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { useVoterAuth } from '@/store/useVoterAuth';
 import API from '@/lib/axios'; // Your Axios instance
+import axios, { AxiosError } from 'axios'; // <<<< IMPORT axios and AxiosError
 
 // Interface for Candidate data from the API
 interface Candidate {
-  _id: string; // Assuming MongoDB ObjectId, adjust if different
+  _id: string;
   name: string;
   party?: string;
-  symbolUrl?: string; // If you have URLs for symbols
-  symbol?: string; // Fallback or alternative text symbol
-  voteCount?: number; // Optional, if backend sends it
+  symbolUrl?: string;
+  symbol?: string;
+  voteCount?: number;
 }
 
 // Interface for the API response when fetching candidates
@@ -26,7 +27,7 @@ interface CandidatesResponse {
 interface CastVoteResponse {
   success: boolean;
   message: string;
-  vote?: { // Optional: details of the cast vote if returned
+  vote?: {
     _id: string;
     voter: string;
     candidate: string;
@@ -34,11 +35,17 @@ interface CastVoteResponse {
   };
 }
 
+// Define a more specific type for Axios errors if your backend sends a standard error structure
+interface ApiErrorData {
+    message?: string;
+    error?: string; // if backend might use this key
+}
+
 export default function VotingPageStub() {
   const navigate = useNavigate();
-  const location = useLocation(); // For redirect state
+  const location = useLocation();
   const votingToken = useVoterAuth((state) => state.votingToken);
-  const otpToken = useVoterAuth((state) => state.otpToken);
+  const otpToken = useVoterAuth((state) => state.otpToken); // Keep for redirect logic
   const clearAuth = useVoterAuth((state) => state.clearAuth);
 
   const [candidates, setCandidates] = useState<Candidate[]>([]);
@@ -49,12 +56,16 @@ export default function VotingPageStub() {
   const [error, setError] = useState<string | null>(null);
   const [isInitialTokenCheckDone, setIsInitialTokenCheckDone] = useState(false);
 
-  // Effect for initial token check and redirection
   useEffect(() => {
     if (!votingToken) {
       if (isInitialTokenCheckDone) {
         alert('Voting session is invalid or has expired. Please complete previous steps.');
-        const redirectPath = otpToken ? '/queue-display-stub' : (votingToken ? '/face-verification-stub' : '/voter-id-entry');
+        // Determine redirect path based on available tokens
+        const redirectPath = otpToken ? '/queue-display-stub' : '/voter-id-entry'; 
+        // Note: The original logic included: (votingToken ? '/face-verification-stub' : '/voter-id-entry')
+        // but if !votingToken is true, that part of the ternary is unreachable for '/face-verification-stub'.
+        // It implies if otpToken exists, they might have missed queue display.
+        // If no tokens, back to start.
         console.log(`VotingPageStub: No votingToken. OTP token ${otpToken ? 'exists' : 'missing'}. Redirecting to ${redirectPath}`);
         navigate(redirectPath, { replace: true, state: { from: location } });
       }
@@ -62,48 +73,53 @@ export default function VotingPageStub() {
     setIsInitialTokenCheckDone(true);
   }, [votingToken, otpToken, navigate, isInitialTokenCheckDone, location]);
 
-
-  // Effect to fetch candidates
   useEffect(() => {
-    if (!votingToken) {
-        // Don't fetch if votingToken isn't ready or valid (handled by the above useEffect)
-        if(isInitialTokenCheckDone) setIsLoadingCandidates(false); // Stop loading if token check failed
-        return;
+    if (!votingToken || !isInitialTokenCheckDone) {
+      if (isInitialTokenCheckDone && !votingToken) { // Only stop loading if token check is done and it failed
+          setIsLoadingCandidates(false);
+      }
+      return;
     }
 
-    const fetchCandidates = async () => {
+    const fetchCandidatesList = async () => {
       setIsLoadingCandidates(true);
       setError(null);
       try {
-        // The votingToken will be sent by the Axios interceptor
         const response = await API.get<CandidatesResponse>('/candidates');
         if (response.data && response.data.success) {
           setCandidates(response.data.candidates);
         } else {
           setError(response.data?.message || 'Failed to load candidates.');
-          setCandidates([]); // Clear any stale candidates
+          setCandidates([]);
         }
-      } catch (err: any) {
+      } catch (err: unknown) { // <<<< CHANGED from 'any' to 'unknown'
         console.error('Error fetching candidates:', err);
-        if (err.response?.status === 401 || err.response?.status === 403) {
-            alert('Your session is invalid. Please log in again.');
-            clearAuth();
-            navigate('/voter-id-entry', { replace: true });
-        } else {
-            setError(err.response?.data?.message || 'An error occurred while fetching candidates.');
+        let specificErrorMessage = 'An error occurred while fetching candidates.';
+        if (axios.isAxiosError(err)) {
+            const axiosError = err as AxiosError<ApiErrorData>;
+            specificErrorMessage = axiosError.response?.data?.message || axiosError.response?.data?.error || specificErrorMessage;
+            if (axiosError.response?.status === 401 || axiosError.response?.status === 403) {
+                alert('Your session is invalid or you are not authorized to view candidates. Please log in again.');
+                clearAuth();
+                navigate('/voter-id-entry', { replace: true });
+                return; // Stop further processing in this function
+            }
+        } else if (err instanceof Error) {
+            specificErrorMessage = err.message;
         }
+        setError(specificErrorMessage);
         setCandidates([]);
       } finally {
         setIsLoadingCandidates(false);
       }
     };
 
-    fetchCandidates();
-  }, [votingToken, clearAuth, navigate, isInitialTokenCheckDone]); // Depend on votingToken and isInitialTokenCheckDone
+    fetchCandidatesList();
+  }, [votingToken, clearAuth, navigate, isInitialTokenCheckDone]); // isInitialTokenCheckDone ensures the first effect runs
 
   const handleSelectCandidate = (candidateId: string) => {
     setSelectedCandidateId(candidateId);
-    setError(null); // Clear error when a new selection is made
+    setError(null); 
   };
 
   const handleCastVote = useCallback(async () => {
@@ -114,7 +130,6 @@ export default function VotingPageStub() {
     if (!votingToken) {
       setError('Your voting session is no longer valid. Please start over.');
       setIsCastingVote(false);
-      // Redirect after a short delay for user to see message
       setTimeout(() => {
         clearAuth();
         navigate('/voter-id-entry', { replace: true });
@@ -127,7 +142,6 @@ export default function VotingPageStub() {
     setStatusMessage('Casting your vote...');
 
     try {
-      // The votingToken will be sent by the Axios interceptor
       const response = await API.post<CastVoteResponse>('/vote', {
         candidateId: selectedCandidateId,
       });
@@ -136,30 +150,34 @@ export default function VotingPageStub() {
         setStatusMessage(response.data.message || 'Your vote has been successfully recorded! Redirecting...');
         setTimeout(() => {
           navigate('/confirmation-stub');
-          clearAuth(); // Clear auth state after successful vote and navigation
-        }, 1500); // Delay for UX to see success message
+          clearAuth(); 
+        }, 1500);
       } else {
         setError(response.data?.message || 'Failed to cast vote. Please try again.');
         setStatusMessage(null);
+        setIsCastingVote(false); // Allow retry if vote cast failed but didn't throw
       }
-    } catch (err: any) {
+    } catch (err: unknown) { // <<<< CHANGED from 'any' to 'unknown'
       console.error('Error casting vote:', err);
-       if (err.response?.status === 401 || err.response?.status === 403) {
-            alert(err.response?.data?.message || 'Your session is invalid or you might have already voted. Redirecting.');
-            clearAuth();
-            navigate('/voter-id-entry', { replace: true }); // Or to a specific "already voted" page
-        } else {
-            setError(err.response?.data?.message || 'An error occurred while casting your vote.');
+      let specificErrorMessage = 'An error occurred while casting your vote.';
+      if (axios.isAxiosError(err)) {
+        const axiosError = err as AxiosError<ApiErrorData>;
+        specificErrorMessage = axiosError.response?.data?.message || axiosError.response?.data?.error || specificErrorMessage;
+        if (axiosError.response?.status === 401 || axiosError.response?.status === 403) {
+          alert(specificErrorMessage); // Message from backend (e.g. "Already voted", "Invalid session")
+          clearAuth();
+          navigate('/voter-id-entry', { replace: true }); 
+          return; 
         }
-      setStatusMessage(null);
-    } finally {
-      // Only set isCastingVote to false if there was an error and we are not redirecting
-      // If successful, navigation will occur, and this component will unmount.
-      if (error || (statusMessage && !statusMessage.includes('successfully recorded'))) {
-          setIsCastingVote(false);
+      } else if (err instanceof Error) {
+        specificErrorMessage = err.message;
       }
+      setError(specificErrorMessage);
+      setStatusMessage(null);
+      setIsCastingVote(false); // Ensure button is re-enabled on error
     }
-  }, [selectedCandidateId, votingToken, navigate, clearAuth, error, statusMessage]); // Added error & statusMessage dependencies
+    // Removed finally block for setIsCastingVote, handled in error/success paths
+  }, [selectedCandidateId, votingToken, navigate, clearAuth]); // Removed error & statusMessage from dependencies
 
   if (!isInitialTokenCheckDone || isLoadingCandidates) {
     return (
@@ -171,19 +189,17 @@ export default function VotingPageStub() {
     );
   }
 
+  // This check is slightly redundant due to the first useEffect but acts as a final safeguard.
   if (!votingToken && !isCastingVote) {
-    // This state should ideally be caught by the initial useEffect redirect.
-    // If it gets here, it's a fallback.
     console.error("VotingPageStub: Rendered without votingToken after checks and not casting vote.");
     return (
       <div className="min-h-screen flex items-center justify-center p-4">
         <p className="text-red-500 font-semibold">
-          Critical session error. Please <a href="/voter-id-entry" className="underline">start over</a>.
+          Critical session error. Please <a href="/voter-id-entry" className="underline hover:text-red-700">start over</a>.
         </p>
       </div>
     );
   }
-
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-green-100 via-cyan-50 to-blue-100 px-4 py-12">
@@ -195,67 +211,72 @@ export default function VotingPageStub() {
 
         {(isCastingVote || (statusMessage && statusMessage.includes('successfully recorded'))) && (
           <div className="flex flex-col items-center space-y-3 py-4">
-            <div className={`w-16 h-16 border-4 ${error ? 'border-red-500' : 'border-green-500'} border-t-transparent rounded-full animate-spin`}></div>
-            <p className={`text-lg font-semibold ${error ? 'text-red-600' : 'text-green-600'}`}>
-              {statusMessage || 'Processing...'}
+            <div className={`w-16 h-16 border-4 ${error && !statusMessage?.includes('successful') ? 'border-red-500' : 'border-green-500'} border-t-transparent rounded-full animate-spin`}></div>
+            <p className={`text-lg font-semibold ${error && !statusMessage?.includes('successful') ? 'text-red-600' : 'text-green-600'}`}>
+              {statusMessage || (error ? 'Error occurred' : 'Processing...')}
             </p>
           </div>
         )}
 
-        {!isCastingVote && error && (
+        {!isCastingVote && error && !(statusMessage && statusMessage.includes('successfully recorded')) && (
           <div className="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-md my-4" role="alert">
             <p className="font-bold">Error</p>
             <p>{error}</p>
           </div>
         )}
         
-        {/* Only show candidates and vote button if NOT casting vote AND vote has NOT been successfully recorded on this page view */}
         {!isCastingVote && !(statusMessage && statusMessage.includes('successfully recorded')) && (
           <form onSubmit={(e) => { e.preventDefault(); handleCastVote(); }} className="space-y-6">
             {candidates.length === 0 && !isLoadingCandidates && !error && (
-                 <p className="text-center text-gray-500">No candidates available at the moment.</p>
+                <p className="text-center text-gray-500 py-4">No candidates available at the moment or failed to load.</p>
             )}
             {candidates.length > 0 && (
-                 <fieldset className="space-y-4">
-                 <legend className="sr-only">Candidates</legend>
-                 {candidates.map((candidate) => (
-                   <label
-                     key={candidate._id} // Use _id from API
-                     htmlFor={candidate._id}
-                     className={`flex items-center p-4 border rounded-lg cursor-pointer transition-all duration-150 ease-in-out
-                       ${selectedCandidateId === candidate._id
-                         ? 'bg-blue-500 border-blue-600 text-white shadow-lg scale-105'
-                         : 'bg-gray-50 hover:bg-gray-100 border-gray-300'}`}
-                   >
-                     <input
-                       type="radio"
-                       id={candidate._id}
-                       name="candidateSelection"
-                       value={candidate._id}
-                       checked={selectedCandidateId === candidate._id}
-                       onChange={() => handleSelectCandidate(candidate._id)}
-                       className="sr-only"
-                     />
-                     {candidate.symbolUrl ? (
-                        <img src={candidate.symbolUrl} alt={`${candidate.name} symbol`} className="w-8 h-8 mr-3 object-contain" />
-                     ) : candidate.symbol && (
-                        <span className="text-2xl mr-3">{candidate.symbol}</span>
-                     )}
-                     <span className="font-medium">{candidate.name}</span>
-                     {candidate.party && <span className="ml-auto text-sm opacity-75">{candidate.party}</span>}
-                   </label>
-                 ))}
-               </fieldset>
+                <fieldset className="space-y-4">
+                <legend className="sr-only">Candidates</legend>
+                {candidates.map((candidate) => (
+                  <label
+                    key={candidate._id}
+                    htmlFor={candidate._id}
+                    className={`flex items-center p-4 border rounded-lg cursor-pointer transition-all duration-150 ease-in-out
+                      ${selectedCandidateId === candidate._id
+                        ? 'bg-blue-500 border-blue-600 text-white shadow-lg scale-105 ring-2 ring-blue-300'
+                        : 'bg-gray-50 hover:bg-gray-100 border-gray-300 focus-within:ring-2 focus-within:ring-blue-400'}`}
+                  >
+                    <input
+                      type="radio"
+                      id={candidate._id}
+                      name="candidateSelection"
+                      value={candidate._id}
+                      checked={selectedCandidateId === candidate._id}
+                      onChange={() => handleSelectCandidate(candidate._id)}
+                      className="sr-only"
+                      aria-label={candidate.name}
+                    />
+                    {candidate.symbolUrl ? (
+                      <img src={candidate.symbolUrl} alt={`${candidate.name} symbol`} className="w-10 h-10 mr-4 object-contain rounded-sm" />
+                    ) : candidate.symbol && (
+                      <span className="text-3xl mr-4 w-10 h-10 flex items-center justify-center bg-gray-200 rounded-sm">{candidate.symbol}</span>
+                    )}
+                    <div className="flex-grow">
+                        <span className="font-medium text-lg">{candidate.name}</span>
+                        {candidate.party && <span className="block text-sm opacity-80">{candidate.party}</span>}
+                    </div>
+                    {selectedCandidateId === candidate._id && (
+                        <span className="ml-auto text-2xl">✓</span>
+                    )}
+                  </label>
+                ))}
+              </fieldset>
             )}
-           
+            
             {candidates.length > 0 && (
-                 <Button
-                 type="submit"
-                 className="w-full py-3 text-lg bg-green-600 hover:bg-green-700 disabled:opacity-50"
-                 disabled={!selectedCandidateId || isCastingVote || !votingToken || isLoadingCandidates}
-               >
-                 {isCastingVote ? 'Casting Vote...' : 'Cast My Vote'}
-               </Button>
+                <Button
+                type="submit"
+                className="w-full py-3 text-lg bg-green-600 hover:bg-green-700 disabled:opacity-60"
+                disabled={!selectedCandidateId || isCastingVote || !votingToken || isLoadingCandidates}
+              >
+                {isCastingVote ? 'Casting Vote...' : 'Cast My Vote'}
+              </Button>
             )}
           </form>
         )}

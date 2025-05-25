@@ -2,7 +2,7 @@
 import axios from 'axios';
 import { useVoterAuth } from '@/store/useVoterAuth';
 import { useOfficerAuth } from '@/store/useOfficerAuth';
-import { useAdminAuth } from '@/store/useAdminAuth'; // Ensure this store exists and is set up
+import { useAdminAuth } from '@/store/useAdminAuth';
 
 const API = axios.create({
   baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000/api',
@@ -10,40 +10,58 @@ const API = axios.create({
 
 // --- Request Interceptor ---
 API.interceptors.request.use((config) => {
-  const voterAuthState = useVoterAuth.getState();
   const officerAuthState = useOfficerAuth.getState();
-  const adminAuthState = useAdminAuth.getState(); 
+  const adminAuthState = useAdminAuth.getState();
+  const voterAuthState = useVoterAuth.getState(); // Assuming voter store might be needed for other routes
   
   let tokenToSend: string | null = null;
   const url = config.url || '';
 
-  // Do not send token for initial login/OTP requests
+  // Exclude token for initial login/OTP requests
   if (url.startsWith('/auth/admin/login') || url.startsWith('/auth/officer/login') || url.startsWith('/auth/send-otp') || url.startsWith('/auth/verify-otp')) {
     tokenToSend = null; 
-    // console.log(`[AxiosInterceptor Request] No token sent for initial auth URL: ${url}`);
-  } else if (url.startsWith('/admin/')) {
+  } else if (url.startsWith('/admin/')) { // Admin specific routes (excluding login)
     tokenToSend = adminAuthState.token;
-    // console.log(`[AxiosInterceptor Request] Using Admin Token for ${url}. Token: ${tokenToSend ? 'PRESENT' : 'NULL'}`);
-  } else if (url.startsWith('/officer/')) {
+  } else if (url.startsWith('/officer/')) { // Officer specific routes (excluding login)
     tokenToSend = officerAuthState.token;
-    // console.log(`[AxiosInterceptor Request] Using Officer Token for ${url}. Token: ${tokenToSend ? 'PRESENT' : 'NULL'}`);
-  } else if (url.startsWith('/verification/face-stub')) {
+  } else if (url.startsWith('/queue')) { 
+    // Specifically for /queue requests, which officer dashboard uses.
+    // This assumes that /queue for an officer context requires the officer token.
+    // If voter/admin also use /queue with different tokens, this logic needs to be more sophisticated,
+    // potentially checking current application path or having distinct API endpoints.
+    // For now, we prioritize officer token if available for /queue.
+    if (officerAuthState.token) {
+        tokenToSend = officerAuthState.token;
+        console.log(`[AxiosInterceptor Request] Prioritizing Officer Token for generic queue URL: ${url}`);
+    } else if (voterAuthState.votingToken && (url.includes('request-slot') || url.includes('candidates') || url.includes('vote'))) {
+        // Fallback or specific voter queue/vote related logic if officer token not applicable/present
+        tokenToSend = voterAuthState.votingToken;
+    }
+  } else if (url.startsWith('/verification/face-stub')) { // Voter specific
     tokenToSend = voterAuthState.otpToken;
-  } else if (url.startsWith('/queue/request-slot') || url.startsWith('/candidates') || url.startsWith('/vote')) {
+  } else if (url.startsWith('/candidates') || url.startsWith('/vote')) { // Voter specific
     tokenToSend = voterAuthState.votingToken;
   }
+  // else {
+  //   // Fallback for any other authenticated routes if a primary role token is available
+  //   // This is a general catch-all and might need to be more nuanced
+  //   if (officerAuthState.token) tokenToSend = officerAuthState.token;
+  //   else if (adminAuthState.token) tokenToSend = adminAuthState.token;
+  //   else if (voterAuthState.otpToken) tokenToSend = voterAuthState.otpToken; 
+  //   else if (voterAuthState.votingToken) tokenToSend = voterAuthState.votingToken;
+  // }
 
   config.headers = config.headers || {};
   if (tokenToSend) {
     config.headers.Authorization = `Bearer ${tokenToSend}`;
-    // console.log(`[AxiosInterceptor Request] Authorization header set for ${url}`);
+    console.log(`[AxiosInterceptor Request] Authorization header SET for ${url} - Token Type: ${officerAuthState.token === tokenToSend ? 'Officer' : adminAuthState.token === tokenToSend ? 'Admin' : 'Voter/Other' }`);
   } else {
-    // console.log(`[AxiosInterceptor Request] No Authorization header set for ${url}`);
+    console.log(`[AxiosInterceptor Request] No Authorization header set for ${url}`);
   }
   return config;
 });
 
-// --- Response Interceptor (Further Refined) ---
+// --- Response Interceptor (Correction from previous turn is assumed to be applied) ---
 API.interceptors.response.use(
   (res) => res, 
   async (err) => {
@@ -57,45 +75,40 @@ API.interceptors.response.use(
 
       const isOfficerLoginAttempt = originalRequest.url?.includes('/auth/officer/login');
       const isAdminLoginAttempt = originalRequest.url?.includes('/auth/admin/login');
-
-      // If 401 was on the login page itself, do NOT logout globally. Let the login page show "invalid credentials".
+      
       if (isOfficerLoginAttempt || isAdminLoginAttempt) {
-        console.log('[AxiosInterceptor Response] 401 occurred on a login API call. Component should handle this (e.g., show "invalid credentials"). No global logout.');
+        console.log('[AxiosInterceptor Response] 401 on a login API call. Component should handle this. No global logout.');
       } 
-      // If on an officer path (and it was NOT a login attempt that failed with 401)
-      // AND an officer token was present (meaning they were authenticated or just logged in),
-      // then assume the token is now invalid/expired.
       else if (currentPath.startsWith('/officer/')) {
-        if (useOfficerAuth.getState().token) { // Check if there was a token
-          console.warn('[AxiosInterceptor Response] 401 on an authenticated /officer/ route (and not a login attempt). Logging out officer.');
-          useOfficerAuth.getState().logout(); 
-          window.location.href = '/officer/login'; 
+        const officerAuth = useOfficerAuth.getState();
+        if (officerAuth.token) { 
+          console.warn('[AxiosInterceptor Response] 401 on an authenticated /officer/ route. Logging out officer via store.');
+          officerAuth.logout();
         } else {
-          // No token, but on an officer path. Should ideally be caught by ProtectedOfficerRoute,
-          // but redirect as a fallback if somehow bypassed.
-          console.log('[AxiosInterceptor Response] 401 on /officer/ path, but no officer token was in store. Redirecting to login as a fallback.');
-          window.location.href = '/officer/login';
+          console.log('[AxiosInterceptor Response] 401 on /officer/ path, but no officer token was in store. ProtectedOfficerRoute should handle redirect.');
         }
       } 
-      // Handle admin routes similarly
       else if (currentPath.startsWith('/admin/')) {
-        if (useAdminAuth.getState().token) {
-          console.warn('[AxiosInterceptor Response] 401 on an authenticated /admin/ route (and not a login attempt). Logging out admin.');
-          useAdminAuth.getState().logout();
-          window.location.href = '/admin/login';
+        const adminAuth = useAdminAuth.getState();
+        if (adminAuth.token) {
+          console.warn('[AxiosInterceptor Response] 401 on an authenticated /admin/ route. Logging out admin via store.');
+          adminAuth.logout();
         } else {
-           console.log('[AxiosInterceptor Response] 401 on /admin/ path, but no admin token was in store. Redirecting to login as a fallback.');
-           window.location.href = '/admin/login';
+           console.log('[AxiosInterceptor Response] 401 on /admin/ path, but no admin token was in store. ProtectedAdminRoute should handle redirect.');
         }
       }
-      // Handle other specific cases if needed
-      // else if (/* other conditions for voter, etc. */) { ... }
+      // Add specific handling for voter tokens if necessary
+      // else if (currentPath.startsWith('/voter/') || originalRequest.url.includes('/vote') || originalRequest.url.includes('/queue')) {
+      //   const voterAuth = useVoterAuth.getState();
+      //   if (voterAuth.otpToken || voterAuth.votingToken) {
+      //     console.warn('[AxiosInterceptor Response] 401 on a voter route/action. Logging out voter via store.');
+      //     voterAuth.clearAuth(); // Assuming voter store has a similar logout action
+      //   }
+      // }
       else {
-        console.log('[AxiosInterceptor Response] 401 on a path not triggering specific auto-logout. Error should be handled by the component that made the API call.');
+        console.log('[AxiosInterceptor Response] 401 on a path not triggering specific auto-logout. Error should be handled by the component.');
       }
     }
-    // ALWAYS reject the promise so the calling code (e.g., SWR, component's .catch() block)
-    // can also receive and handle the error as needed.
     return Promise.reject(err); 
   }
 );

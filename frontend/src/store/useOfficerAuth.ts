@@ -15,8 +15,9 @@ interface PersistedOfficerState {
   officer: OfficerData | null;
 }
 
+// Full state includes non-persisted _hasHydrated and actions
 export interface FullOfficerAuthState extends PersistedOfficerState {
-  _hasHydrated: boolean;
+  _hasHydrated: boolean; // Tracks if the store has been rehydrated from localStorage
   login: (token: string, officerData: OfficerData) => void;
   logout: () => void;
   setHasHydrated: (hydrated: boolean) => void;
@@ -50,11 +51,17 @@ const officerAuthStoreLogic: StateCreator<FullOfficerAuthState, [], [], FullOffi
       token: null,
       officer: null,
     });
+    // Note: Do not reset _hasHydrated on logout. It indicates localStorage sync status.
   },
   
   setHasHydrated: (hydrated) => {
-    console.log(`[useOfficerAuth] ACTION: setHasHydrated called with: ${hydrated}`);
-    set({ _hasHydrated: hydrated });
+    // Only set if it's changing, to potentially avoid extra notifications if already set.
+    if (get()._hasHydrated !== hydrated) {
+        console.log(`[useOfficerAuth] ACTION: setHasHydrated called with: ${hydrated}`);
+        set({ _hasHydrated: hydrated });
+    } else {
+        console.log(`[useOfficerAuth] ACTION: setHasHydrated called with: ${hydrated}, but already in that state.`);
+    }
   }
 });
 
@@ -79,16 +86,24 @@ const officerPersistOptions: PersistOptions<FullOfficerAuthState, PersistedOffic
              console.log(`[useOfficerAuth] onRehydrateStorage (inner listener): Token from localStorage after rehydration: ${rehydratedState.token ? 'PRESENT' : 'NULL'}`);
         }
       }
+      // Set _hasHydrated to true once rehydration attempt is complete (success or failure).
+      // Use a timeout to ensure this runs after the initial store setup.
       setTimeout(() => {
-        console.log('[useOfficerAuth] onRehydrateStorage (inner listener - setTimeout): Attempting to call setHasHydrated(true).');
         if (useOfficerAuth && typeof useOfficerAuth.getState === 'function') {
-            useOfficerAuth.getState().setHasHydrated(true);
+            // Check current state before setting to avoid unnecessary update if already true.
+            if (!useOfficerAuth.getState()._hasHydrated) {
+                useOfficerAuth.getState().setHasHydrated(true);
+            } else {
+                console.log('[useOfficerAuth] onRehydrateStorage: Store was already marked as hydrated.');
+            }
         } else {
-            console.error('[useOfficerAuth] onRehydrateStorage (inner listener - setTimeout): useOfficerAuth.getState is not available yet.');
+            console.error('[useOfficerAuth] onRehydrateStorage (setTimeout): useOfficerAuth.getState is not available.');
         }
       }, 0);
     };
   },
+  // Consider adding skipHydration option if manual hydration control is needed.
+  // skipHydration: true, // If you want to manually trigger rehydration.
 };
 
 // --- Create the Store ---
@@ -96,7 +111,18 @@ export const useOfficerAuth = create<FullOfficerAuthState>()(
   persist(officerAuthStoreLogic, officerPersistOptions)
 );
 
-// --- Selector Hooks ---
+// --- More Granular Selector Hooks (Replaces useOfficerAuthStatus) ---
+export const useIsOfficerAuthenticated = () => useOfficerAuth((state) => !!state.token);
+export const useOfficerHasHydrated = () => useOfficerAuth((state) => state._hasHydrated);
+export const useOfficerToken = () => useOfficerAuth((state) => state.token);
+export const useOfficerUser = () => useOfficerAuth((state) => state.officer);
+
+// Optional: If you still need a combined hook, ensure components using it are memoized or handle re-renders carefully.
+// For example, if OfficerDashboard and ProtectedOfficerRoute use these granular hooks, 
+// the old useOfficerAuthStatus hook may no longer be needed or can be refactored.
+
+// Old hook (can be removed or refactored if components switch to granular hooks):
+/*
 export const useOfficerAuthStatus = () => {
   const { token, _hasHydrated, officer } = useOfficerAuth(
     (state) => {
@@ -115,3 +141,4 @@ export const useOfficerAuthStatus = () => {
     officer 
   };
 };
+*/
