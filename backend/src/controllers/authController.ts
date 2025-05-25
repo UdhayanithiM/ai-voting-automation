@@ -115,7 +115,7 @@ export const initiateVoterOtpById = asyncHandler(async (req: Request, res: Respo
             phoneHint: voter.phoneNumber.slice(-4),
         });
     } catch (otpError) {
-        next(new ErrorResponse('Failed to send OTP', 500, otpError instanceof Error ? otpError.message : undefined));
+        next(new ErrorResponse('Failed to send OTP', 500, otpError instanceof Error ? otpError.message : String(otpError)));
     }
 });
 
@@ -166,6 +166,6 @@ export const verifyVoterIdOtp = asyncHandler(async (req: Request, res: Response,
             },
         });
     } catch (error) {
-        next(new ErrorResponse('OTP verification failed', 500, error instanceof Error ? error.message : undefined));
+        next(new ErrorResponse('OTP verification failed', 500, error instanceof Error ? error.message : String(error)));
     }
 });

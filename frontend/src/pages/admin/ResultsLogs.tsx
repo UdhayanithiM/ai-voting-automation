@@ -4,30 +4,42 @@ import API from '@/lib/axios'; // Your global Axios instance
 import { Button } from '@/components/ui/Button';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { useAdminAuth, useAdminHasHydrated } from '@/store/useAdminAuth'; // Import hydration hook
-import { Navigate } from 'react-router-dom'; // For redirect if not authenticated
+import { useAdminAuth, useAdminHasHydrated } from '@/store/useAdminAuth'; 
+import { Navigate } from 'react-router-dom'; 
+import { AxiosError } from 'axios'; // Import AxiosError
 
-// Define the structure of a single vote record from the backend
-// Ensure this matches the actual structure returned by your /api/admin/votes endpoint
 interface FormattedVote {
-  id: string; // Changed from _id to id based on backend controller's mapping
+  id: string; 
   voterId: string;
-  voterName?: string; // Make optional if not always present
+  voterName?: string; 
   candidateName: string;
-  candidatePosition?: string; // Make optional
-  timestamp: string; // Changed from createdAt, as per backend controller mapping
+  candidatePosition?: string; 
+  timestamp: string; 
 }
 
-// Consistent SWR fetcher using the global API instance
+// Define an interface for the backend error response
+interface BackendErrorResponseData {
+    message?: string;
+    error?: string;
+}
+
 const swrFetcher = (url: string) => API.get(url).then((res) => res.data as FormattedVote[]);
 
 export default function ResultsLogs() {
-  const { token } = useAdminAuth(state => ({ token: state.token }));
+  // CORRECTED: Select the token directly as a primitive value
+  const token = useAdminAuth(state => state.token);
   const hasHydrated = useAdminHasHydrated();
 
-  const { data: votes = [], error: votesError, isLoading } = useSWR<FormattedVote[]>(
-    hasHydrated && token ? '/admin/votes' : null, // Fetch only if hydrated and token exists
-    swrFetcher
+  const { data: votes = [], error: votesError, isLoading } = useSWR<FormattedVote[], AxiosError<BackendErrorResponseData>>(
+    // Ensure SWR runs only after hydration and if token exists
+    hasHydrated && token ? '/admin/votes' : null, 
+    swrFetcher,
+    {
+        onError: (err) => {
+            console.error('SWR Error fetching vote logs:', err.message);
+            // Additional error handling if needed
+        }
+    }
   );
 
   const exportToCSV = () => {
@@ -81,28 +93,30 @@ export default function ResultsLogs() {
         new Date(vote.timestamp).toLocaleString(),
       ]),
       theme: 'striped',
-      headStyles: { fillColor: [22, 160, 133] }, // Example header color
+      headStyles: { fillColor: [22, 160, 133] }, 
       margin: { top: 30 }
     });
 
     doc.save('voting-logs.pdf');
   };
 
+  // Wait for hydration before rendering
   if (!hasHydrated) {
     return <p className="text-center mt-4">Loading authentication...</p>;
   }
 
-  // This should ideally be handled by ProtectedAdminRoute
-  if (!token && hasHydrated) {
-     console.warn("ResultsLogs: No token after hydration, redirecting to login.");
-     return <Navigate to="/admin/login" replace />;
+  // If not authenticated after hydration
+  if (!token) {
+    console.warn("ResultsLogs: No token after hydration, redirecting to login.");
+    return <Navigate to="/admin/login" replace />;
   }
   
   if (isLoading && token) return <p className="text-gray-500 text-center mt-4">Loading vote data...</p>;
   
   if (votesError) {
-      console.error("Error loading vote logs:", votesError);
-      return <p className="text-red-500 text-center mt-4">Failed to load vote logs: {votesError.response?.data?.message || votesError.message}</p>;
+    console.error("Error loading vote logs:", votesError);
+    const errorMsg = votesError.response?.data?.message || votesError.message;
+    return <p className="text-red-500 text-center mt-4">Failed to load vote logs: {errorMsg}</p>;
   }
 
   return (

@@ -11,7 +11,7 @@ export const generateToken = (id: string, role: string): string => {
   };
 
   const secretFromEnv: string | undefined = process.env.JWT_SECRET;
-  const expiresInSetting: string | undefined = process.env.JWT_EXPIRES_IN;
+  const expiresInSettingFromEnv: string | undefined = process.env.JWT_EXPIRES_IN;
 
   if (!secretFromEnv) {
     console.error('FATAL ERROR: JWT_SECRET is not defined in environment variables. Cannot sign tokens.');
@@ -21,15 +21,17 @@ export const generateToken = (id: string, role: string): string => {
   const secretKey: Secret = secretFromEnv;
   const options: SignOptions = {};
 
-  if (expiresInSetting) {
-    const numericExpiresIn = Number(expiresInSetting);
-    if (!isNaN(numericExpiresIn) && String(numericExpiresIn) === expiresInSetting.trim()) {
-        options.expiresIn = numericExpiresIn; 
+  if (expiresInSettingFromEnv && expiresInSettingFromEnv.trim() !== '') {
+    const trimmedExpiresIn = expiresInSettingFromEnv.trim();
+    // Check if it's a string representation of a number (e.g., "3600" for seconds)
+    const numericExpiresIn = Number(trimmedExpiresIn);
+    if (!isNaN(numericExpiresIn) && String(numericExpiresIn) === trimmedExpiresIn) {
+      options.expiresIn = numericExpiresIn; // Use as number (seconds)
     } else {
-        options.expiresIn = expiresInSetting; 
+      options.expiresIn = trimmedExpiresIn; // Use as string (e.g., "1d", "7h")
     }
   } else {
-    options.expiresIn = '1d'; // Default expiry
+    options.expiresIn = '1d'; // Default expiry if not set or empty
   }
 
   return jwt.sign(payload, secretKey, options);

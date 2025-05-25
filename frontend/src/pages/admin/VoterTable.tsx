@@ -1,50 +1,59 @@
 // frontend/src/pages/admin/VoterTable.tsx
 import useSWR from 'swr';
 import API from '@/lib/axios'; // Use the global API instance
-import { useState } from 'react';
-import { useAdminAuth } from '@/store/useAdminAuth'; // For conditional fetching
-import { Button } from '@/components/ui/Button'; // Assuming you have this
-import axios from 'axios'; // For AxiosError type
+import { useState } from 'react'; // Removed unused 'useEffect'
+import { useAdminAuth, useAdminHasHydrated } from '@/store/useAdminAuth';
+import { Button } from '@/components/ui/Button';
+import { AxiosError } from 'axios'; // Keep AxiosError if used for type, remove default 'axios' import if not used
 
 interface Voter {
   _id: string;
   fullName: string;
-  voterId: string; // Assuming this is the general ID, not a specific type like Aadhaar
+  voterId: string;
   dob: string;
   selfie?: string;
   createdAt: string;
-  status?: 'Verified' | 'Flagged' | 'Pending' | string; // Allow string for flexibility if backend sends other statuses
+  status?: 'Verified' | 'Flagged' | 'Pending' | string;
   approved?: boolean;
   flagged?: boolean;
   flagReason?: string;
-  // Add other fields like aadharNumber, voterIdNumber, registerNumber if they come from backend
 }
 
-// Updated SWR fetcher to use the global API instance
+interface BackendErrorResponseData {
+    message?: string;
+    error?: string;
+}
+
 const swrFetcher = (url: string) => API.get(url).then((res) => res.data);
 
 export default function VoterTable() {
-  const { token: adminToken /* Implement _hasHydrated in useAdminAuth for robustness */ } = useAdminAuth(state => ({ token: state.token }));
-  
-  const { data: voters = [], error: votersError, isLoading, mutate } = useSWR<Voter[]>(
-    adminToken ? '/admin/voters' : null, // Conditional fetching
-    swrFetcher
+  const adminToken = useAdminAuth(state => state.token);
+  const hasHydrated = useAdminHasHydrated();
+
+  const { data: voters = [], error: votersError, isLoading, mutate } = useSWR<Voter[], AxiosError<BackendErrorResponseData>>(
+    hasHydrated && adminToken ? '/admin/voters' : null,
+    swrFetcher,
+    {
+        onError: (err) => {
+            console.error('SWR Error fetching voters:', err.message);
+        }
+    }
   );
 
   const [selected, setSelected] = useState<Voter | null>(null);
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
 
-  // Approve a voter
   const approveVoter = async (voterId: string) => {
     setActionError(null);
     try {
-      await API.post(`/admin/voters/${voterId}/approve`); // Added leading slash
-      mutate(); // Refresh data after action
+      await API.post(`/admin/voters/${voterId}/approve`);
+      mutate();
     } catch (error) {
       console.error('Error approving voter:', error);
-      if (axios.isAxiosError(error) && error.response?.data?.message) {
-        setActionError(`Error approving voter: ${error.response.data.message}`);
+      const axiosError = error as AxiosError<BackendErrorResponseData>;
+      if (axiosError.isAxiosError && axiosError.response?.data?.message) {
+        setActionError(`Error approving voter: ${axiosError.response.data.message}`);
       } else if (error instanceof Error) {
         setActionError(`Error approving voter: ${error.message}`);
       } else {
@@ -53,19 +62,19 @@ export default function VoterTable() {
     }
   };
 
-  // Flag a voter
   const flagVoter = async (voterId: string) => {
     setActionError(null);
     try {
       const reason = window.prompt('Please enter reason for flagging:');
-      if (reason === null) return; // User cancelled
+      if (reason === null) return;
       
-      await API.post(`/admin/voters/${voterId}/flag`, { reason }); // Added leading slash
-      mutate(); // Refresh data
+      await API.post(`/admin/voters/${voterId}/flag`, { reason });
+      mutate();
     } catch (error) {
       console.error('Flagging failed:', error);
-      if (axios.isAxiosError(error) && error.response?.data?.message) {
-        setActionError(`Flagging failed: ${error.response.data.message}`);
+      const axiosError = error as AxiosError<BackendErrorResponseData>;
+      if (axiosError.isAxiosError && axiosError.response?.data?.message) {
+        setActionError(`Flagging failed: ${axiosError.response.data.message}`);
       } else if (error instanceof Error) {
         setActionError(`Flagging failed: ${error.message}`);
       } else {
@@ -74,14 +83,21 @@ export default function VoterTable() {
     }
   };
 
-  if (!adminToken /* && !_hasHydrated */) {
-    // This case should ideally be handled by ProtectedAdminRoute after hydration logic is added to useAdminAuth
-    // For now, it prevents SWR from running without a token if useAdminAuth hasn't initialized.
+  if (!hasHydrated) {
     return <p className="text-center mt-4">Authenticating...</p>;
   }
 
+  if (!adminToken) {
+      console.warn("VoterTable: No adminToken after hydration. ProtectedAdminRoute should have redirected.");
+      return <p className="text-center mt-4">Redirecting to login...</p>; 
+  }
+
   if (isLoading) return <p className="text-gray-500 text-center mt-4">Loading voters...</p>;
-  if (votersError) return <p className="text-red-500 text-center mt-4">Failed to load voters: {votersError.message}</p>;
+  
+  if (votersError) {
+      const errorMsg = votersError.response?.data?.message || votersError.message;
+      return <p className="text-red-500 text-center mt-4">Failed to load voters: {errorMsg}</p>;
+  }
 
   return (
     <div className="min-h-screen bg-white p-6">
@@ -149,7 +165,7 @@ export default function VoterTable() {
                         setSelected(voter);
                         setIsModalOpen(true);
                       }}
-                      variant="link" // Assuming a link variant for less prominent action
+                      variant="link" 
                       className="text-blue-600 hover:underline text-sm p-1"
                     >
                       View
