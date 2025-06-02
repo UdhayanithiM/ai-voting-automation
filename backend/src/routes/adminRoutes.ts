@@ -1,4 +1,5 @@
-import express from 'express'
+// backend/src/routes/adminRoutes.ts
+import express from 'express';
 import {
   getAllVoters,
   approveVoter,
@@ -6,21 +7,23 @@ import {
   createOfficer,
   getAdminStats,
   getVoteLogs,
-} from '../controllers/adminController'
-import { protect } from '../middleware/authMiddleware'
+  createVoterByAdmin, // Import the new controller function
+} from '../controllers/adminController';
+import { protect } from '../middleware/authMiddleware';
 
-const router = express.Router()
-
-// Admin functionalities
-router.get('/voters', protect, getAllVoters)            // View all voters
-router.post('/voters/:id/approve', protect, approveVoter) // Approve voter (fixed)
-router.post('/voters/:id/flag', protect, flagVoter)     // Flag voter (fixed)
-
-// Officer management
-router.post('/officers', protect, createOfficer)         // Create officer
+const router = express.Router();
 
 // Admin dashboard stats
-router.get('/stats', protect, getAdminStats)             // Get dashboard stats
-router.get('/votes', protect, getVoteLogs) // Add this with other admin routes
+router.get('/stats', protect, getAdminStats);
+router.get('/votes', protect, getVoteLogs);
 
-export default router
+// Officer management
+router.post('/officers', protect, createOfficer);
+
+// Voter management by Admin
+router.get('/voters', protect, getAllVoters);
+router.post('/voters/create-direct', protect, createVoterByAdmin); // **NEW ROUTE**
+router.post('/voters/:id/approve', protect, approveVoter);
+router.post('/voters/:id/flag', protect, flagVoter);
+
+export default router;
