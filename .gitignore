@@ -134,3 +134,10 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
+
+venv/
+*.pyc
+__pycache__/
+.env
+node_modules/
+dist/

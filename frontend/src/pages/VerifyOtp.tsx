@@ -103,7 +103,7 @@ export default function VerifyOtpPage() {
 
         console.log('SUCCESS CONDITION MET: Navigating to /face-verification-stub'); //
         // navigationAttemptedRef.current = true; // Not strictly needed here as navigate will unmount
-        navigate('/face-verification-stub'); //
+        navigate('/face-verification'); //
         return; // Exit function after successful navigation
       } else {
         setError(response.data?.message || 'Verification failed: Invalid response from server.'); //

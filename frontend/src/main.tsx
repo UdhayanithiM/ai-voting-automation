@@ -15,8 +15,8 @@ import VoterSelfRegistrationPage from '@/pages/voter/VoterSelfRegistrationPage';
 import SelfieCaptureForRegistration from '@/pages/voter/SelfieCaptureForRegistration';
 import RegistrationPendingPage from '@/pages/voter/RegistrationPendingPage';
 
-// Voter MVP Flow Stubs
-import FaceVerificationStubPage from '@/pages/voter/FaceVerificationStubPage';
+// Voter MVP Flow Pages (Updated Names)
+import FaceVerificationPage from '@/pages/voter/FaceVerificationPage'; // UPDATED: Renamed import
 import QueueDisplayStubPage from '@/pages/voter/QueueDisplayStubPage';
 import VotingPageStub from '@/pages/voter/VotingPageStub';
 import ConfirmationStubPage from '@/pages/voter/ConfirmationStubPage';
@@ -28,7 +28,7 @@ import AdminDashboard from '@/pages/admin/AdminDashboard';
 import VoterTable from '@/pages/admin/VoterTable';
 import ResultsLogs from '@/pages/admin/ResultsLogs';
 import RegisterOfficer from '@/pages/admin/RegisterOfficer';
-import AdminCreateVoterPage from '@/pages/admin/AdminCreateVoterPage'; // ** IMPORTED **
+import AdminCreateVoterPage from '@/pages/admin/AdminCreateVoterPage';
 import ProtectedAdminRoute from '@/pages/admin/ProtectedAdminRoute';
 
 // --- Officer Flow Pages ---
@@ -58,11 +58,12 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
         <Route path="/voter-id-entry" element={<VoterIdEntryPage />} />
         <Route path="/verify-otp" element={<VerifyOtpPage />} />
 
+        {/* UPDATED ROUTE for real face verification */}
         <Route
-          path="/face-verification-stub"
+          path="/face-verification" 
           element={
             <ProtectedVoterAuthRoute tokenType="otpTokenRequired">
-              <FaceVerificationStubPage />
+              <FaceVerificationPage />
             </ProtectedVoterAuthRoute>
           }
         />
@@ -115,7 +116,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             element={<ProtectedAdminRoute><VoterTable /></ProtectedAdminRoute>}
           />
           <Route
-            path="dashboard/create-voter" // Path for the AdminCreateVoterPage
+            path="dashboard/create-voter"
             element={<ProtectedAdminRoute><AdminCreateVoterPage /></ProtectedAdminRoute>}
           />
           <Route
@@ -123,7 +124,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
             element={<ProtectedAdminRoute><ResultsLogs /></ProtectedAdminRoute>}
           />
           <Route
-            path="register-officer" // This path is /admin/register-officer
+            path="register-officer"
             element={<ProtectedAdminRoute><RegisterOfficer /></ProtectedAdminRoute>}
           />
         </Route>
